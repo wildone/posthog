@@ -1,8 +1,9 @@
-import { Tag, Select } from 'antd'
+import { Select } from 'antd'
 import { colorForString } from 'lib/utils'
 import React, { CSSProperties, useEffect, useState } from 'react'
 import { PlusOutlined, SyncOutlined, CloseOutlined } from '@ant-design/icons'
 import { SelectGradientOverflow } from '../SelectGradientOverflow'
+import { LemonTag } from '../LemonTag/LemonTag'
 
 interface ObjectTagsPropsBase {
     tags: string[]
@@ -75,7 +76,7 @@ export function ObjectTags({
                       .filter((t) => !!t)
                       .map((tag, index) => {
                           return (
-                              <Tag
+                              <LemonTag
                                   key={index}
                                   color={COLOR_OVERRIDES[tag] || colorForString(tag)}
                                   style={{ marginTop: 8 }}
@@ -91,12 +92,12 @@ export function ObjectTags({
                                               onClick={() => handleDelete(tag, tags, id)}
                                           />
                                       ))}
-                              </Tag>
+                              </LemonTag>
                           )
                       })}
             {!staticOnly && onTagSave && saving !== undefined && (
                 <span style={{ display: 'inline-flex', fontWeight: 400 }}>
-                    <Tag
+                    <LemonTag
                         onClick={() => setAddingNewTag(true)}
                         data-attr="button-add-tag"
                         style={{
@@ -106,8 +107,8 @@ export function ObjectTags({
                             display: addingNewTag ? 'none' : 'initial',
                         }}
                     >
-                        <PlusOutlined /> New Tag
-                    </Tag>
+                        <PlusOutlined /> New tag
+                    </LemonTag>
                     {addingNewTag && (
                         <SelectGradientOverflow
                             size="small"

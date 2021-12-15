@@ -112,11 +112,11 @@ function PageButton({ title, sideAction, identifier, highlight, ...buttonProps }
             <span style={{ flexGrow: 1 }}>{title || sceneConfigurations[identifier].name}</span>
             {highlight === 'beta' ? (
                 <LemonTag type="warning" style={{ marginLeft: 4, float: 'right' }}>
-                    Beta
+                    BETA
                 </LemonTag>
             ) : highlight === 'new' ? (
                 <LemonTag type="success" style={{ marginLeft: 4, float: 'right' }}>
-                    New
+                    NEW
                 </LemonTag>
             ) : null}
         </LemonButton>

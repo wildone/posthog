@@ -16,7 +16,9 @@ import { navigationLogic } from './navigationLogic'
 export function AccessLevelIndicator({ organization }: { organization: OrganizationBasicType }): JSX.Element {
     return (
         <LemonTag className="AccessLevelIndicator" title={`Your ${organization.name} organization access level`}>
-            {(organization.membership_level ? membershipLevelToName.get(organization.membership_level) : null) || '?'}
+            {(organization.membership_level
+                ? membershipLevelToName.get(organization.membership_level)?.toUpperCase()
+                : null) || '?'}
         </LemonTag>
     )
 }

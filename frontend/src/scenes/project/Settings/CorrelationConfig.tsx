@@ -60,7 +60,7 @@ export function CorrelationConfig(): JSX.Element {
             <h2 className="subtitle" id="internal-users-filtering">
                 Correlation analysis exclusions{' '}
                 <LemonTag type="warning" style={{ marginLeft: 8 }}>
-                    Beta
+                    BETA
                 </LemonTag>
             </h2>
             <p>Globally exclude events or properties that do not provide relevant signals for your conversions.</p>

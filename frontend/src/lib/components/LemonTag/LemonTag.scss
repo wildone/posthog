@@ -1,27 +1,29 @@
 @import '~/vars';
 
-.lemon-tag {
+.LemonTag {
     font-size: 0.75rem;
-    font-weight: $medium;
-    background: $border;
-    padding: 0.125rem 0.25rem;
-    border-radius: $radius;
-    text-transform: uppercase;
-    display: inline;
-    color: $text_default;
+    font-weight: 500;
+    background: var(--border);
+    padding: 0 0.25rem;
+    border-radius: var(--radius);
+    border-width: 1px;
+    display: inline-flex;
+    align-items: center;
+    height: 1.25rem;
+    color: var(--text-default);
     line-height: 1rem;
 
     &.warning {
-        background-color: $warning;
+        background-color: var(--warning);
     }
 
     &.danger {
-        background-color: $danger;
-        color: $text_light;
+        background-color: var(--danger);
+        color: var(--text-light);
     }
 
     &.success {
-        background-color: $success;
-        color: $text_light;
+        background-color: var(--success);
+        color: var(--text-light);
     }
 }

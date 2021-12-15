@@ -4,12 +4,12 @@ import './LemonTag.scss'
 
 interface LemonTagProps extends React.HTMLAttributes<HTMLDivElement> {
     type?: 'warning' | 'danger' | 'success' | 'default'
-    children: JSX.Element | string
+    children: any
 }
 
 export function LemonTag({ type = 'default', children, className, ...props }: LemonTagProps): JSX.Element {
     return (
-        <div className={clsx('lemon-tag', type, className)} {...props}>
+        <div className={clsx('LemonTag', type, className)} {...props}>
             {children}
         </div>
     )

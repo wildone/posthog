@@ -20,7 +20,7 @@ export function SessionsRecordings(): JSX.Element {
                     <Row align="middle">
                         Recordings
                         <LemonTag type="warning" style={{ marginLeft: 8 }}>
-                            Beta
+                            BETA
                         </LemonTag>
                     </Row>
                 }

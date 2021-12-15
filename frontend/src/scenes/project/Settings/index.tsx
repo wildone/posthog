@@ -199,7 +199,7 @@ export function ProjectSettings(): JSX.Element {
                 <h2 className="subtitle" id="path_cleaning_filtering">
                     Path cleaning rules
                     <LemonTag type="warning" style={{ marginLeft: 8 }}>
-                        Beta
+                        BETA
                     </LemonTag>
                 </h2>
                 <p>
@@ -260,7 +260,7 @@ export function ProjectSettings(): JSX.Element {
                 <h2 id="recordings" className="subtitle" style={{ display: 'flex', alignItems: 'center' }}>
                     Recordings
                     <LemonTag type="warning" style={{ marginLeft: 8 }}>
-                        Beta
+                        BETA
                     </LemonTag>
                 </h2>
                 <p>
