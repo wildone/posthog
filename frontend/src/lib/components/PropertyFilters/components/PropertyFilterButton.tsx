@@ -6,18 +6,24 @@ import { cohortsModel } from '~/models/cohortsModel'
 import { AnyPropertyFilter } from '~/types'
 import { keyMapping } from 'lib/components/PropertyKeyInfo'
 import clsx from 'clsx'
+import { propertyDefinitionsModel } from '~/models/propertyDefinitionsModel'
 
-export interface Props {
+export interface PropertyFilterButtonProps {
     item: AnyPropertyFilter
     greyBadges?: boolean
     onClick?: () => void
     setRef?: (ref: HTMLElement) => void
 }
 
-export function PropertyFilterButton({ item, ...props }: Props): JSX.Element {
+export function PropertyFilterButton({ item, ...props }: PropertyFilterButtonProps): JSX.Element {
     const { cohorts } = useValues(cohortsModel)
+    const { formatForDisplay } = useValues(propertyDefinitionsModel)
 
-    return <FilterButton {...props}>{formatPropertyLabel(item, cohorts, keyMapping)}</FilterButton>
+    return (
+        <FilterButton {...props}>
+            {formatPropertyLabel(item, cohorts, keyMapping, (s) => formatForDisplay(item.key, s))}
+        </FilterButton>
+    )
 }
 
 interface FilterRowProps {

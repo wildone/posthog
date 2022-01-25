@@ -9,10 +9,11 @@ import { DateTime } from 'luxon'
 import * as path from 'path'
 import { types as pgTypes } from 'pg'
 import { ConnectionOptions } from 'tls'
+import { LazyPluginVM } from 'worker/vm/lazy'
 
 import { defaultConfig } from '../../config/config'
 import { JobQueueManager } from '../../main/job-queues/job-queue-manager'
-import { Hub, PluginsServerConfig } from '../../types'
+import { Hub, PluginId, PluginsServerConfig } from '../../types'
 import { ActionManager } from '../../worker/ingestion/action-manager'
 import { ActionMatcher } from '../../worker/ingestion/action-matcher'
 import { HookCommander } from '../../worker/ingestion/hooks'
@@ -24,6 +25,7 @@ import { killProcess } from '../kill'
 import { status } from '../status'
 import { createPostgresPool, createRedis, logOrThrowJobQueueError, UUIDT } from '../utils'
 import { PluginsApiKeyManager } from './../../worker/vm/extensions/helpers/api-key-manager'
+import { RootAccessManager } from './../../worker/vm/extensions/helpers/root-acess-manager'
 import { PluginMetricsManager } from './../plugin-metrics'
 import { DB } from './db'
 import { KafkaProducerWrapper } from './kafka-producer-wrapper'
@@ -34,6 +36,8 @@ export async function createHub(
     config: Partial<PluginsServerConfig> = {},
     threadId: number | null = null
 ): Promise<[Hub, () => Promise<void>]> {
+    status.info('ℹ️', `Connecting to all services:`)
+
     const serverConfig: PluginsServerConfig = {
         ...defaultConfig,
         ...config,
@@ -44,6 +48,7 @@ export async function createHub(
     let statsd: StatsD | undefined
     let eventLoopLagInterval: NodeJS.Timeout | undefined
     if (serverConfig.STATSD_HOST) {
+        status.info('🤔', `StatsD`)
         statsd = new StatsD({
             port: serverConfig.STATSD_PORT,
             host: serverConfig.STATSD_HOST,
@@ -69,6 +74,7 @@ export async function createHub(
                 `Sending metrics to StatsD at ${serverConfig.STATSD_HOST}:${serverConfig.STATSD_PORT}, prefix: "${serverConfig.STATSD_PREFIX}"`
             )
         }
+        status.info('👍', `StatsD`)
     }
 
     let kafkaSsl: ConnectionOptions | undefined
@@ -93,7 +99,9 @@ export async function createHub(
     let clickhouse: ClickHouse | undefined
     let kafka: Kafka | undefined
     let kafkaProducer: KafkaProducerWrapper | undefined
+
     if (serverConfig.KAFKA_ENABLED) {
+        status.info('🤔', `ClickHouse`)
         if (!serverConfig.KAFKA_HOSTS) {
             throw new Error('You must set KAFKA_HOSTS to process events from Kafka!')
         }
@@ -114,7 +122,9 @@ export async function createHub(
             rejectUnauthorized: serverConfig.CLICKHOUSE_CA ? false : undefined,
         })
         await clickhouse.querying('SELECT 1') // test that the connection works
+        status.info('👍', `ClickHouse`)
 
+        status.info('🤔', `Kafka`)
         kafka = new Kafka({
             clientId: `plugin-server-v${version}-${instanceId}`,
             brokers: serverConfig.KAFKA_HOSTS.split(','),
@@ -127,6 +137,7 @@ export async function createHub(
         await producer?.connect()
 
         kafkaProducer = new KafkaProducerWrapper(producer, statsd, serverConfig)
+        status.info('👍', `Kafka`)
     }
 
     // `node-postgres` will return dates as plain JS Date objects, which will use the local timezone.
@@ -142,8 +153,11 @@ export async function createHub(
         timeStr ? DateTime.fromSQL(timeStr, { zone: 'utc' }).toISO() : null
     )
 
+    status.info('🤔', `Postgresql`)
     const postgres = createPostgresPool(serverConfig)
+    status.info('👍', `Postgresql`)
 
+    status.info('🤔', `Redis`)
     const redisPool = createPool<Redis.Redis>(
         {
             create: () => createRedis(serverConfig),
@@ -157,16 +171,13 @@ export async function createHub(
             autostart: true,
         }
     )
+    status.info('👍', `Redis`)
 
     const db = new DB(postgres, redisPool, kafkaProducer, clickhouse, statsd)
-    const teamManager = new TeamManager(
-        db,
-        statsd,
-        serverConfig.SITE_URL,
-        serverConfig.EXPERIMENTAL_EVENTS_LAST_SEEN_ENABLED
-    )
+    const teamManager = new TeamManager(db, serverConfig, statsd)
     const organizationManager = new OrganizationManager(db)
     const pluginsApiKeyManager = new PluginsApiKeyManager(db)
+    const rootAccessManager = new RootAccessManager(db)
     const actionManager = new ActionManager(db)
     await actionManager.prepare()
 
@@ -193,6 +204,7 @@ export async function createHub(
         teamManager,
         organizationManager,
         pluginsApiKeyManager,
+        rootAccessManager,
         actionManager,
         actionMatcher: new ActionMatcher(db, actionManager, statsd),
         hookCannon: new HookCommander(db, teamManager, organizationManager, statsd),

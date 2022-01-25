@@ -192,14 +192,13 @@ class TestDashboard(APIBaseTest):
                 team=self.team,
                 last_refresh=now(),
             )
-            item_sessions: Insight = Insight.objects.create(
+            item_trends: Insight = Insight.objects.create(
                 dashboard=dashboard,
                 filters=Filter(
                     data={
                         "display": "ActionsLineGraph",
                         "events": [{"id": "$pageview", "type": "events", "order": 0, "properties": []}],
                         "filters": [],
-                        "insight": "SESSIONS",
                         "interval": "day",
                         "pagination": {},
                         "session": "avg",
@@ -220,13 +219,13 @@ class TestDashboard(APIBaseTest):
             self.assertEqual(response_data["items"][0]["result"][0]["count"], 0)
 
             item_default.refresh_from_db()
-            item_sessions.refresh_from_db()
+            item_trends.refresh_from_db()
 
             self.assertEqual(parser.isoparse(response_data["items"][0]["last_refresh"]), item_default.last_refresh)
-            self.assertEqual(parser.isoparse(response_data["items"][1]["last_refresh"]), item_sessions.last_refresh)
+            self.assertEqual(parser.isoparse(response_data["items"][1]["last_refresh"]), item_trends.last_refresh)
 
             self.assertAlmostEqual(item_default.last_refresh, now(), delta=timezone.timedelta(seconds=5))
-            self.assertAlmostEqual(item_sessions.last_refresh, now(), delta=timezone.timedelta(seconds=5))
+            self.assertAlmostEqual(item_trends.last_refresh, now(), delta=timezone.timedelta(seconds=5))
 
     def test_dashboard_endpoints(self):
         # create
@@ -350,19 +349,19 @@ class TestDashboard(APIBaseTest):
 
         # valid - use_template empty and use_dashboard is not set
         response = self.client.post(
-            f"/api/projects/{self.team.id}/dashboards", {"name": "another", "use_template": "",}
+            f"/api/projects/{self.team.id}/dashboards", {"name": "another", "use_template": "",},
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
         # valid - only use_template is set
         response = self.client.post(
-            f"/api/projects/{self.team.id}/dashboards", {"name": "another", "use_template": "DEFAULT_APP",}
+            f"/api/projects/{self.team.id}/dashboards", {"name": "another", "use_template": "DEFAULT_APP",},
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
         # valid - only use_dashboard is set
         response = self.client.post(
-            f"/api/projects/{self.team.id}/dashboards", {"name": "another", "use_dashboard": existing_dashboard.id,}
+            f"/api/projects/{self.team.id}/dashboards", {"name": "another", "use_dashboard": existing_dashboard.id,},
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
@@ -374,7 +373,7 @@ class TestDashboard(APIBaseTest):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
         # valid - both use_template and use_dashboard are not set
-        response = self.client.post(f"/api/projects/{self.team.id}/dashboards", {"name": "another",})
+        response = self.client.post(f"/api/projects/{self.team.id}/dashboards", {"name": "another",},)
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
     def test_dashboard_creation_mode(self):
@@ -476,9 +475,11 @@ class TestDashboard(APIBaseTest):
 
         response = self.client.get(f"/api/projects/{self.team.id}/insights/trend/?properties={properties}")
 
-        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.status_code, 400, response.content)
         self.assertDictEqual(
-            response.json(), self.validation_error_response("Properties are unparsable!", "invalid_input")
+            response.json(),
+            self.validation_error_response("Properties are unparsable!", "invalid_input"),
+            response.content,
         )
 
     def test_insights_with_no_insight_set(self):

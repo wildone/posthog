@@ -2,9 +2,16 @@ import React, { useEffect, useRef, useState } from 'react'
 import { AutoComplete, Select } from 'antd'
 import { useThrottledCallback } from 'use-debounce'
 import api from 'lib/api'
-import { isOperatorFlag, isOperatorMulti, isOperatorRegex, toString } from 'lib/utils'
+import { isOperatorDate, isOperatorFlag, isOperatorMulti, isOperatorRegex, toString } from 'lib/utils'
 import { SelectGradientOverflow } from 'lib/components/SelectGradientOverflow'
 import { PropertyOperator } from '~/types'
+import { dayjs } from 'lib/dayjs'
+import generatePicker from 'antd/lib/date-picker/generatePicker'
+import dayjsGenerateConfig from 'rc-picker/es/generate/dayjs'
+import { propertyDefinitionsModel } from '~/models/propertyDefinitionsModel'
+import { useValues } from 'kea'
+
+export const DatePicker = generatePicker<dayjs.Dayjs>(dayjsGenerateConfig)
 
 type PropValue = {
     id?: number
@@ -70,6 +77,8 @@ export function PropertyValue({
     const [shouldBlur, setShouldBlur] = useState(false)
     const [options, setOptions] = useState({} as Record<string, Option>)
     const autoCompleteRef = useRef<HTMLElement>(null)
+
+    const { formatForDisplay } = useValues(propertyDefinitionsModel)
 
     // update the input field if passed a new `value` prop
     useEffect(() => {
@@ -138,7 +147,6 @@ export function PropertyValue({
 
     const commonInputProps = {
         style: { width: '100%', ...style },
-        loading: options[input]?.status === 'loading',
         onSearch: (newInput: string) => {
             setInput(newInput)
             if (!Object.keys(options).includes(newInput) && !(operator && isOperatorFlag(operator))) {
@@ -178,10 +186,17 @@ export function PropertyValue({
         },
     }
 
+    const dayJSMightParse = (
+        candidateDateTimeValue: string | number | (string | number)[] | null | undefined
+    ): candidateDateTimeValue is string | number | undefined =>
+        ['string', 'number'].includes(typeof candidateDateTimeValue)
+
     return (
         <>
             {isMultiSelect ? (
                 <SelectGradientOverflow
+                    loading={options[propertyKey]?.status === 'loading'}
+                    propertyKey={propertyKey}
                     {...commonInputProps}
                     autoFocus={autoFocus}
                     value={value === null ? [] : value}
@@ -197,9 +212,9 @@ export function PropertyValue({
                         }
                     }}
                 >
-                    {input && !displayOptions.some(({ name }) => input === toString(name)) && (
+                    {input && !displayOptions.some(({ name }) => input.toLowerCase() === toString(name).toLowerCase()) && (
                         <Select.Option key="specify-value" value={input} className="ph-no-capture">
-                            Specify: {input}
+                            Specify: {formatForDisplay(propertyKey, input)}
                         </Select.Option>
                     )}
                     {displayOptions.map(({ name: _name }, index) => {
@@ -212,11 +227,31 @@ export function PropertyValue({
                                 className="ph-no-capture"
                                 title={name}
                             >
-                                {name === '' ? <i>(empty string)</i> : name}
+                                {name === '' ? <i>(empty string)</i> : formatForDisplay(propertyKey, name)}
                             </Select.Option>
                         )
                     })}
                 </SelectGradientOverflow>
+            ) : operator && isOperatorDate(operator) ? (
+                <>
+                    <DatePicker
+                        {...commonInputProps}
+                        inputReadOnly={false}
+                        className={'filter-date-picker'}
+                        dropdownClassName={'filter-date-picker-dropdown'}
+                        format="YYYY-MM-DD HH:mm:ss"
+                        showTime={true}
+                        showNow={false}
+                        value={dayJSMightParse(value) ? dayjs(value) : null}
+                        onOk={(selectedDate) => {
+                            setValue(selectedDate.format('YYYY-MM-DD HH:mm:ss'))
+                        }}
+                        getPopupContainer={(trigger: Element | null) => {
+                            const container = trigger?.parentElement?.parentElement?.parentElement
+                            return container ?? document.body
+                        }}
+                    />
+                </>
             ) : (
                 <AutoComplete
                     {...commonInputProps}

@@ -1,5 +1,5 @@
 import { parseMetadataResponse, sessionRecordingLogic } from 'scenes/session-recordings/sessionRecordingLogic'
-import { api, defaultAPIMocks, mockAPI, MOCK_TEAM_ID } from 'lib/api.mock'
+import { api, mockAPI, MOCK_TEAM_ID } from 'lib/api.mock'
 import { expectLogic } from 'kea-test-utils'
 import { initKeaTestLogic } from '~/test/init'
 import { eventUsageLogic, RecordingWatchedSource } from 'lib/utils/eventUsageLogic'
@@ -7,7 +7,9 @@ import recordingSnapshotsJson from './__mocks__/recording_snapshots.json'
 import recordingMetaJson from './__mocks__/recording_meta.json'
 import recordingEventsJson from './__mocks__/recording_events.json'
 import { preflightLogic } from 'scenes/PreflightCheck/logic'
-import { combineUrl } from 'kea-router'
+import { combineUrl, router } from 'kea-router'
+import { RecordingEventType } from '~/types'
+import { resumeKeaLoadersErrors, silenceKeaLoadersErrors } from '~/initKea'
 
 jest.mock('lib/api')
 
@@ -21,15 +23,14 @@ const EVENTS_SESSION_RECORDING_EVENTS_ENDPOINT = `api/projects/${MOCK_TEAM_ID}/e
 describe('sessionRecordingLogic', () => {
     let logic: ReturnType<typeof sessionRecordingLogic.build>
 
-    mockAPI(async (url) => {
-        if (!!url.pathname.match(EVENTS_SESSION_RECORDING_SNAPSHOTS_ENDPOINT_REGEX)) {
+    mockAPI(async ({ pathname }) => {
+        if (!!pathname.match(EVENTS_SESSION_RECORDING_SNAPSHOTS_ENDPOINT_REGEX)) {
             return { result: recordingSnapshotsJson }
-        } else if (url.pathname.startsWith(EVENTS_SESSION_RECORDING_META_ENDPOINT)) {
+        } else if (pathname.startsWith(EVENTS_SESSION_RECORDING_META_ENDPOINT)) {
             return { result: recordingMetaJson }
-        } else if (url.pathname.startsWith(EVENTS_SESSION_RECORDING_EVENTS_ENDPOINT)) {
+        } else if (pathname.startsWith(EVENTS_SESSION_RECORDING_EVENTS_ENDPOINT)) {
             return { results: recordingEventsJson }
         }
-        return defaultAPIMocks(url)
     })
 
     initKeaTestLogic({
@@ -45,40 +46,98 @@ describe('sessionRecordingLogic', () => {
             await expectLogic(logic).toMatchValues({
                 sessionRecordingId: null,
                 sessionPlayerData: null,
-                firstChunkLoaded: false,
+                sessionEventsData: null,
+                filters: {},
+                chunkPaginationIndex: 0,
+                sessionEventsDataLoading: false,
                 source: RecordingWatchedSource.Unknown,
             })
+        })
+        it('reads recording ids from the url', async () => {
+            router.actions.push(
+                '/recordings',
+                {},
+                {
+                    sessionRecordingId: '1',
+                }
+            )
+
+            await expectLogic(logic).toDispatchActions([
+                logic.actionCreators.loadRecordingMeta('1'),
+                logic.actionCreators.loadRecordingSnapshots('1'),
+            ])
         })
     })
 
     describe('loading session core', () => {
-        it('fetch metadata and snapshots together', async () => {
-            const firstPayload = {
-                ...recordingMetaJson,
-                session_recording: parseMetadataResponse(recordingMetaJson.session_recording),
-                snapshots: [],
+        it('fetch metadata and then snapshots', async () => {
+            const resultAfterMetadataResponse = {
+                person: recordingMetaJson.person,
+                metadata: parseMetadataResponse(recordingMetaJson.session_recording),
+                snapshotsByWindowId: {},
+                bufferedTo: null,
             }
-            const secondPayload = {
-                ...firstPayload,
-                next: undefined,
-                snapshots: recordingSnapshotsJson.snapshots,
-            }
+
             await expectLogic(logic, () => {
                 logic.actions.loadRecordingMeta('1')
             })
                 .toDispatchActions(['loadRecordingMeta', 'loadRecordingMetaSuccess'])
                 .toMatchValues({
-                    sessionPlayerData: firstPayload,
+                    sessionPlayerData: resultAfterMetadataResponse,
                 })
                 .toFinishAllListeners()
+
+            const resultAfterSnapshotResponse = {
+                ...resultAfterMetadataResponse,
+                bufferedTo: {
+                    time: 44579,
+                    windowId: '17da0b29e21c36-0df8b0cc82d45-1c306851-1fa400-17da0b29e2213f',
+                },
+                next: undefined,
+                snapshotsByWindowId: recordingSnapshotsJson.snapshot_data_by_window_id,
+            }
 
             await expectLogic(logic, () => {
                 logic.actions.loadRecordingSnapshots('1')
             })
                 .toDispatchActions(['loadRecordingSnapshots', 'loadRecordingSnapshotsSuccess'])
                 .toMatchValues({
-                    sessionPlayerData: secondPayload,
+                    sessionPlayerData: resultAfterSnapshotResponse,
                 })
+        })
+        it('fetch snapshots and then metadata', async () => {
+            const resultAfterSnapshotResponse = {
+                bufferedTo: null,
+                next: undefined,
+                snapshotsByWindowId: recordingSnapshotsJson.snapshot_data_by_window_id,
+            }
+
+            await expectLogic(logic, () => {
+                logic.actions.loadRecordingSnapshots('1')
+            })
+                .toDispatchActions(['loadRecordingSnapshots', 'loadRecordingSnapshotsSuccess'])
+                .toMatchValues({
+                    sessionPlayerData: resultAfterSnapshotResponse,
+                })
+
+            const resultAfterMetadataResponse = {
+                ...resultAfterSnapshotResponse,
+                bufferedTo: {
+                    time: 44579,
+                    windowId: '17da0b29e21c36-0df8b0cc82d45-1c306851-1fa400-17da0b29e2213f',
+                },
+                person: recordingMetaJson.person,
+                metadata: parseMetadataResponse(recordingMetaJson.session_recording),
+            }
+
+            await expectLogic(logic, () => {
+                logic.actions.loadRecordingMeta('1')
+            })
+                .toDispatchActions(['loadRecordingMeta', 'loadRecordingMetaSuccess'])
+                .toMatchValues({
+                    sessionPlayerData: resultAfterMetadataResponse,
+                })
+                .toFinishAllListeners()
         })
         it('fetch metadata error and snapshots success', async () => {
             api.get.mockImplementation(async (url: string) => {
@@ -88,6 +147,7 @@ describe('sessionRecordingLogic', () => {
                     throw new Error('Oh no.')
                 }
             })
+            silenceKeaLoadersErrors()
             await expectLogic(logic, () => {
                 logic.actions.loadRecordingMeta('1')
             })
@@ -96,24 +156,27 @@ describe('sessionRecordingLogic', () => {
                     sessionPlayerData: null,
                 })
                 .toFinishAllListeners()
-
+            resumeKeaLoadersErrors()
             await expectLogic(logic, () => {
                 logic.actions.loadRecordingSnapshots('1')
             })
                 .toDispatchActions(['loadRecordingSnapshots', 'loadRecordingSnapshotsSuccess'])
                 .toMatchValues({
                     sessionPlayerData: {
+                        bufferedTo: null,
                         next: undefined,
-                        snapshots: recordingSnapshotsJson.snapshots,
+                        snapshotsByWindowId: recordingSnapshotsJson.snapshot_data_by_window_id,
                     },
                 })
         })
         it('fetch metadata success and snapshots error', async () => {
             const expected = {
-                ...recordingMetaJson,
-                session_recording: parseMetadataResponse(recordingMetaJson.session_recording),
-                snapshots: [],
+                person: recordingMetaJson.person,
+                metadata: parseMetadataResponse(recordingMetaJson.session_recording),
+                snapshotsByWindowId: {},
+                bufferedTo: null,
             }
+            silenceKeaLoadersErrors()
             api.get.mockImplementation(async (url: string) => {
                 if (combineUrl(url).pathname.match(EVENTS_SESSION_RECORDING_SNAPSHOTS_ENDPOINT_REGEX)) {
                     throw new Error('Oh no.')
@@ -137,10 +200,34 @@ describe('sessionRecordingLogic', () => {
                 .toMatchValues({
                     sessionPlayerData: expected,
                 })
+            resumeKeaLoadersErrors()
         })
     })
 
     describe('loading session events', () => {
+        const events = recordingEventsJson
+
+        const expected_events: RecordingEventType[] = []
+        expected_events.push({
+            ...events[1],
+            playerTime: 0,
+            playerPosition: {
+                time: 0,
+                windowId: events[1].properties.$window_id as string,
+            },
+            percentageOfRecordingDuration: 0,
+        })
+
+        expected_events.push({
+            ...events[2],
+            playerTime: 38998,
+            playerPosition: {
+                time: 39000,
+                windowId: events[2].properties.$window_id as string,
+            },
+            percentageOfRecordingDuration: 1.4308651234056042,
+        })
+
         it('load events after metadata with 1min buffer', async () => {
             await expectLogic(logic, () => {
                 logic.actions.loadRecordingMeta('1')
@@ -148,8 +235,8 @@ describe('sessionRecordingLogic', () => {
                 .toDispatchActions(['loadRecordingMeta', 'loadRecordingMetaSuccess', 'loadEvents'])
                 .toMatchValues({
                     eventsApiParams: {
-                        after: '2021-10-12T05:12:42Z',
-                        before: '2021-10-12T18:48:47Z',
+                        after: '2021-12-09T19:35:59Z',
+                        before: '2021-12-09T20:23:24Z',
                         person_id: 1,
                         orderBy: ['timestamp'],
                     },
@@ -162,11 +249,8 @@ describe('sessionRecordingLogic', () => {
                 .toDispatchActions(['loadRecordingMeta', 'loadRecordingMetaSuccess', 'loadEvents', 'loadEventsSuccess'])
                 .toNotHaveDispatchedActions(['loadEvents'])
         })
-        it('fetch all events', async () => {
+        it('fetch all events and sort by player time', async () => {
             const firstNext = `${EVENTS_SESSION_RECORDING_EVENTS_ENDPOINT}?person_id=1&before=2021-10-28T17:45:12.128000Z&after=2021-10-28T16:45:05Z`
-            const secondNext = `${EVENTS_SESSION_RECORDING_EVENTS_ENDPOINT}?person_id=1&before=2021-10-28T17:45:12.128000Z&after=2021-10-28T16:50:05Z`
-            const thirdNext = `${EVENTS_SESSION_RECORDING_EVENTS_ENDPOINT}?person_id=1&before=2021-10-28T17:45:12.128000Z&after=2021-10-28T17:00:05Z`
-            const events = recordingEventsJson
 
             api.get.mockClear()
             api.get
@@ -178,16 +262,6 @@ describe('sessionRecordingLogic', () => {
                 .mockImplementationOnce(async (url: string) => {
                     if (combineUrl(url).pathname.startsWith(EVENTS_SESSION_RECORDING_EVENTS_ENDPOINT)) {
                         return { results: recordingEventsJson, next: firstNext }
-                    }
-                })
-                .mockImplementationOnce(async (url: string) => {
-                    if (combineUrl(url).pathname.startsWith(EVENTS_SESSION_RECORDING_EVENTS_ENDPOINT)) {
-                        return { results: recordingEventsJson, next: secondNext }
-                    }
-                })
-                .mockImplementationOnce(async (url: string) => {
-                    if (combineUrl(url).pathname.startsWith(EVENTS_SESSION_RECORDING_EVENTS_ENDPOINT)) {
-                        return { results: recordingEventsJson, next: thirdNext }
                     }
                 })
                 .mockImplementationOnce(async (url: string) => {
@@ -203,38 +277,22 @@ describe('sessionRecordingLogic', () => {
                 .toMatchValues({
                     sessionEventsData: {
                         next: firstNext,
-                        events,
+                        events: expected_events,
                     },
                 })
                 .toDispatchActions([logic.actionCreators.loadEvents(firstNext), 'loadEventsSuccess'])
                 .toMatchValues({
                     sessionEventsData: {
-                        next: secondNext,
-                        events: [...events, ...events],
-                    },
-                })
-                .toDispatchActions([logic.actionCreators.loadEvents(secondNext), 'loadEventsSuccess'])
-                .toMatchValues({
-                    sessionEventsData: {
-                        next: thirdNext,
-                        events: [...events, ...events, ...events],
-                    },
-                })
-                .toDispatchActions([logic.actionCreators.loadEvents(thirdNext), 'loadEventsSuccess'])
-                .toMatchValues({
-                    sessionEventsData: {
                         next: undefined,
-                        events: [...events, ...events, ...events, ...events],
+                        events: [expected_events[0], expected_events[0], expected_events[1], expected_events[1]],
                     },
                 })
                 .toNotHaveDispatchedActions(['loadEvents'])
-            expect(api.get).toBeCalledTimes(5)
+            expect(api.get).toBeCalledTimes(3)
         })
         it('server error mid-fetch', async () => {
             const firstNext = `${EVENTS_SESSION_RECORDING_EVENTS_ENDPOINT}?person_id=1&before=2021-10-28T17:45:12.128000Z&after=2021-10-28T16:45:05Z`
-            const secondNext = `${EVENTS_SESSION_RECORDING_EVENTS_ENDPOINT}?person_id=1&before=2021-10-28T17:45:12.128000Z&after=2021-10-28T16:50:05Z`
-            const events = recordingEventsJson
-
+            silenceKeaLoadersErrors()
             api.get.mockClear()
             api.get
                 .mockImplementationOnce(async (url: string) => {
@@ -247,15 +305,9 @@ describe('sessionRecordingLogic', () => {
                         return { results: recordingEventsJson, next: firstNext }
                     }
                 })
-                .mockImplementationOnce(async (url: string) => {
-                    if (combineUrl(url).pathname.startsWith(EVENTS_SESSION_RECORDING_EVENTS_ENDPOINT)) {
-                        return { results: recordingEventsJson, next: secondNext }
-                    }
-                })
                 .mockImplementationOnce(async () => {
                     throw new Error('Error in third request')
                 })
-
             await expectLogic(logic, () => {
                 logic.actions.loadRecordingMeta('1')
             })
@@ -263,32 +315,65 @@ describe('sessionRecordingLogic', () => {
                 .toMatchValues({
                     sessionEventsData: {
                         next: firstNext,
-                        events,
+                        events: expected_events,
                     },
                 })
-                .toDispatchActions([logic.actionCreators.loadEvents(firstNext), 'loadEventsSuccess'])
+                .toDispatchActions([logic.actionCreators.loadEvents(firstNext), 'loadEventsFailure'])
+            resumeKeaLoadersErrors()
+            expect(api.get).toBeCalledTimes(3)
+        })
+        it('makes the events searchable', async () => {
+            api.get.mockClear()
+            api.get
+                .mockImplementationOnce(async (url: string) => {
+                    if (combineUrl(url).pathname.startsWith(EVENTS_SESSION_RECORDING_META_ENDPOINT)) {
+                        return { result: recordingMetaJson }
+                    }
+                })
+                .mockImplementationOnce(async (url: string) => {
+                    if (combineUrl(url).pathname.startsWith(EVENTS_SESSION_RECORDING_EVENTS_ENDPOINT)) {
+                        return { results: recordingEventsJson, next: undefined }
+                    }
+                })
+
+            await expectLogic(logic, () => {
+                logic.actions.loadRecordingMeta('1')
+            })
+                .toDispatchActions(['loadRecordingMeta', 'loadRecordingMetaSuccess', 'loadEvents', 'loadEventsSuccess'])
                 .toMatchValues({
-                    sessionEventsData: {
-                        next: secondNext,
-                        events: [...events, ...events],
-                    },
+                    eventsToShow: expected_events,
                 })
-                .toDispatchActions([logic.actionCreators.loadEvents(secondNext), 'loadEventsFailure'])
-            expect(api.get).toBeCalledTimes(4)
+
+            expectLogic(logic, () => {
+                logic.actions.setFilters({ query: 'blah' })
+            }).toMatchValues({
+                filters: { query: 'blah' },
+                eventsToShow: [{ ...expected_events[1], queryValue: 'blah blah' }],
+            })
         })
     })
 
     describe('loading session snapshots', () => {
+        const snaps =
+            recordingSnapshotsJson.snapshot_data_by_window_id[
+                '17da0b29e21c36-0df8b0cc82d45-1c306851-1fa400-17da0b29e2213f'
+            ]
+
         it('no next url', async () => {
             await expectLogic(logic, () => {
                 logic.actions.loadRecordingSnapshots('1')
             })
                 .toDispatchActions(['loadRecordingSnapshots', 'loadRecordingSnapshotsSuccess'])
                 .toMatchValues({
-                    sessionPlayerData: recordingSnapshotsJson,
+                    sessionPlayerData: {
+                        bufferedTo: null,
+                        next: undefined,
+                        snapshotsByWindowId: recordingSnapshotsJson.snapshot_data_by_window_id,
+                    },
                 })
                 .toNotHaveDispatchedActions(['loadRecordingSnapshots'])
         })
+
         it('fetch all chunks of recording', async () => {
             await expectLogic(preflightLogic).toDispatchActions(['loadPreflightSuccess'])
             await expectLogic(logic).toMount([eventUsageLogic])
@@ -296,9 +381,6 @@ describe('sessionRecordingLogic', () => {
 
             const snapshotUrl = createSnapshotEndpoint(1)
             const firstNext = `${snapshotUrl}/?offset=200&limit=200`
-            const secondNext = `${snapshotUrl}/?offset=400&limit=200`
-            const thirdNext = `${snapshotUrl}/?offset=600&limit=200`
-            const snaps = recordingSnapshotsJson.snapshots
 
             api.get
                 .mockImplementationOnce(async (url: string) => {
@@ -308,17 +390,7 @@ describe('sessionRecordingLogic', () => {
                 })
                 .mockImplementationOnce(async (url: string) => {
                     if (combineUrl(url).pathname.match(EVENTS_SESSION_RECORDING_SNAPSHOTS_ENDPOINT_REGEX)) {
-                        return { result: { ...recordingSnapshotsJson, next: secondNext } }
-                    }
-                })
-                .mockImplementationOnce(async (url: string) => {
-                    if (combineUrl(url).pathname.match(EVENTS_SESSION_RECORDING_SNAPSHOTS_ENDPOINT_REGEX)) {
-                        return { result: { ...recordingSnapshotsJson, next: thirdNext } }
-                    }
-                })
-                .mockImplementationOnce(async (url: string) => {
-                    if (combineUrl(url).pathname.match(EVENTS_SESSION_RECORDING_SNAPSHOTS_ENDPOINT_REGEX)) {
-                        return { result: recordingSnapshotsJson }
+                        return { result: { ...recordingSnapshotsJson } }
                     }
                 })
 
@@ -327,7 +399,11 @@ describe('sessionRecordingLogic', () => {
             })
                 .toDispatchActions(['loadRecordingSnapshots', 'loadRecordingSnapshotsSuccess'])
                 .toMatchValues({
-                    sessionPlayerData: { ...recordingSnapshotsJson, next: firstNext },
+                    sessionPlayerData: {
+                        bufferedTo: null,
+                        snapshotsByWindowId: { '17da0b29e21c36-0df8b0cc82d45-1c306851-1fa400-17da0b29e2213f': snaps },
+                        next: firstNext,
+                    },
                 })
                 .toDispatchActions([
                     logic.actionCreators.loadRecordingSnapshots(undefined, firstNext),
@@ -335,35 +411,15 @@ describe('sessionRecordingLogic', () => {
                 ])
                 .toMatchValues({
                     sessionPlayerData: {
-                        ...recordingSnapshotsJson,
-                        next: secondNext,
-                        snapshots: [...snaps, ...snaps],
-                    },
-                })
-                .toDispatchActions([
-                    logic.actionCreators.loadRecordingSnapshots(undefined, secondNext),
-                    'loadRecordingSnapshotsSuccess',
-                ])
-                .toMatchValues({
-                    sessionPlayerData: {
-                        ...recordingSnapshotsJson,
-                        next: thirdNext,
-                        snapshots: [...snaps, ...snaps, ...snaps],
-                    },
-                })
-                .toDispatchActions([
-                    logic.actionCreators.loadRecordingSnapshots(undefined, thirdNext),
-                    'loadRecordingSnapshotsSuccess',
-                ])
-                .toMatchValues({
-                    sessionPlayerData: {
-                        ...recordingSnapshotsJson,
+                        bufferedTo: null,
+                        snapshotsByWindowId: {
+                            '17da0b29e21c36-0df8b0cc82d45-1c306851-1fa400-17da0b29e2213f': [...snaps, ...snaps],
+                        },
                         next: undefined,
-                        snapshots: [...snaps, ...snaps, ...snaps, ...snaps],
                     },
                 })
 
-            expect(api.get).toBeCalledTimes(4)
+            expect(api.get).toBeCalledTimes(2)
         })
         it('server error mid-way through recording', async () => {
             await expectLogic(preflightLogic).toDispatchActions(['loadPreflightSuccess'])
@@ -372,22 +428,15 @@ describe('sessionRecordingLogic', () => {
 
             const snapshotUrl = createSnapshotEndpoint(1)
             const firstNext = `${snapshotUrl}/?offset=200&limit=200`
-            const secondNext = `${snapshotUrl}/?offset=400&limit=200`
-            const snaps = recordingSnapshotsJson.snapshots
-
+            silenceKeaLoadersErrors()
             api.get
                 .mockImplementationOnce(async (url: string) => {
                     if (combineUrl(url).pathname.match(EVENTS_SESSION_RECORDING_SNAPSHOTS_ENDPOINT_REGEX)) {
                         return { result: { ...recordingSnapshotsJson, next: firstNext } }
                     }
                 })
-                .mockImplementationOnce(async (url: string) => {
-                    if (combineUrl(url).pathname.match(EVENTS_SESSION_RECORDING_SNAPSHOTS_ENDPOINT_REGEX)) {
-                        return { result: { ...recordingSnapshotsJson, next: secondNext } }
-                    }
-                })
                 .mockImplementationOnce(async () => {
-                    throw new Error('Error in third request')
+                    throw new Error('Error in second request')
                 })
 
             await expectLogic(logic, () => {
@@ -395,212 +444,18 @@ describe('sessionRecordingLogic', () => {
             })
                 .toDispatchActions(['loadRecordingSnapshots', 'loadRecordingSnapshotsSuccess'])
                 .toMatchValues({
-                    sessionPlayerData: { ...recordingSnapshotsJson, next: firstNext },
-                    firstChunkLoaded: true,
+                    sessionPlayerData: {
+                        bufferedTo: null,
+                        snapshotsByWindowId: { '17da0b29e21c36-0df8b0cc82d45-1c306851-1fa400-17da0b29e2213f': snaps },
+                        next: firstNext,
+                    },
                 })
                 .toDispatchActions([
                     logic.actionCreators.loadRecordingSnapshots(undefined, firstNext),
-                    'loadRecordingSnapshotsSuccess',
-                ])
-                .toMatchValues({
-                    sessionPlayerData: {
-                        ...recordingSnapshotsJson,
-                        next: secondNext,
-                        snapshots: [...snaps, ...snaps],
-                    },
-                    firstChunkLoaded: true,
-                })
-                .toDispatchActions([
-                    logic.actionCreators.loadRecordingSnapshots(undefined, secondNext),
                     'loadRecordingSnapshotsFailure',
                 ])
-
-            // Error toast is thrown
-            expect(api.get).toBeCalledTimes(3)
-        })
-    })
-
-    describe('loading states', () => {
-        it('meta and snapshots loaded together', async () => {
-            await expectLogic(logic, () => {
-                logic.actions.loadRecordingMeta('1')
-            })
-                .toDispatchActions(['loadRecordingMeta'])
-                .toMatchValues({
-                    firstChunkLoaded: false,
-                    sessionPlayerDataLoading: true,
-                })
-                .toDispatchActions(['loadRecordingMetaSuccess'])
-                .toMatchValues({
-                    firstChunkLoaded: false,
-                    sessionPlayerDataLoading: false,
-                })
-            await expectLogic(logic, () => {
-                logic.actions.loadRecordingSnapshots('1')
-            })
-                .toDispatchActions(['loadRecordingSnapshots'])
-                .toMatchValues({
-                    firstChunkLoaded: false,
-                    sessionPlayerDataLoading: true,
-                })
-                .toDispatchActions(['loadRecordingSnapshotsSuccess'])
-                .toMatchValues({
-                    firstChunkLoaded: true,
-                    sessionPlayerDataLoading: false,
-                })
-        })
-        it('standard loading in single chunk recording', async () => {
-            await expectLogic(logic, () => {
-                logic.actions.loadRecordingSnapshots('1')
-            })
-                .toDispatchActions(['loadRecordingSnapshots'])
-                .toMatchValues({
-                    firstChunkLoaded: false,
-                    sessionPlayerDataLoading: true,
-                })
-                .toDispatchActions(['loadRecordingSnapshotsSuccess'])
-                .toMatchValues({
-                    firstChunkLoaded: true,
-                    sessionPlayerDataLoading: false,
-                })
-                .toNotHaveDispatchedActions(['loadRecordingSnapshots'])
-        })
-        it('stays loading throughout multi chunk recording', async () => {
-            await expectLogic(preflightLogic).toDispatchActions(['loadPreflightSuccess'])
-            await expectLogic(logic).toMount([eventUsageLogic])
-
-            const snapshotUrl = createSnapshotEndpoint(1)
-            const firstNext = `${snapshotUrl}/?offset=200&limit=200`
-            const secondNext = `${snapshotUrl}/?offset=400&limit=200`
-
-            api.get
-                .mockImplementationOnce(async (url: string) => {
-                    if (combineUrl(url).pathname.match(EVENTS_SESSION_RECORDING_SNAPSHOTS_ENDPOINT_REGEX)) {
-                        return { result: { ...recordingSnapshotsJson, next: firstNext } }
-                    }
-                })
-                .mockImplementationOnce(async (url: string) => {
-                    if (combineUrl(url).pathname.match(EVENTS_SESSION_RECORDING_SNAPSHOTS_ENDPOINT_REGEX)) {
-                        return { result: { ...recordingSnapshotsJson, next: secondNext } }
-                    }
-                })
-                .mockImplementationOnce(async (url: string) => {
-                    if (combineUrl(url).pathname.match(EVENTS_SESSION_RECORDING_SNAPSHOTS_ENDPOINT_REGEX)) {
-                        return { result: recordingSnapshotsJson }
-                    }
-                })
-
-            await expectLogic(logic, () => {
-                logic.actions.loadRecordingSnapshots('1')
-            })
-                .toDispatchActions(['loadRecordingSnapshots'])
-                .toMatchValues({
-                    firstChunkLoaded: false,
-                    sessionPlayerDataLoading: true,
-                })
-                .toDispatchActions(['loadRecordingSnapshotsSuccess'])
-                .toMatchValues({
-                    firstChunkLoaded: true,
-                    sessionPlayerDataLoading: true,
-                })
-                .toDispatchActions([logic.actionCreators.loadRecordingSnapshots(undefined, firstNext)])
-                .toMatchValues({
-                    firstChunkLoaded: true,
-                    sessionPlayerDataLoading: true,
-                })
-                .toDispatchActions(['loadRecordingSnapshotsSuccess'])
-                .toMatchValues({
-                    firstChunkLoaded: true,
-                    sessionPlayerDataLoading: true,
-                })
-                .toDispatchActions([logic.actionCreators.loadRecordingSnapshots(undefined, secondNext)])
-                .toMatchValues({
-                    firstChunkLoaded: true,
-                    sessionPlayerDataLoading: true,
-                })
-                .toDispatchActions(['loadRecordingSnapshotsSuccess'])
-                .toMatchValues({
-                    firstChunkLoaded: true,
-                    sessionPlayerDataLoading: false,
-                })
-        })
-        describe('isPlayable', () => {
-            it('first chunk loads but no full snapshot yet', async () => {
-                await expectLogic(logic, () => {
-                    logic.actions.loadRecordingSnapshots('1')
-                })
-                    .toDispatchActions(['loadRecordingSnapshots', 'loadRecordingSnapshotsSuccess'])
-                    .toMatchValues({
-                        sessionPlayerData: recordingSnapshotsJson,
-                        firstChunkLoaded: true,
-                        isPlayable: false,
-                    })
-            })
-            it("first chunk loads and there's at least one full snapshot", async () => {
-                const newSnapshots = [
-                    ...recordingSnapshotsJson.snapshots,
-                    {
-                        type: 2,
-                        data: { source: 0 },
-                        timestamp: 1634019260528,
-                    },
-                ]
-                api.get.mockImplementationOnce(async (url: string) => {
-                    if (combineUrl(url).pathname.match(EVENTS_SESSION_RECORDING_SNAPSHOTS_ENDPOINT_REGEX)) {
-                        return {
-                            result: {
-                                ...recordingSnapshotsJson,
-                                snapshots: newSnapshots,
-                            },
-                        }
-                    }
-                })
-
-                await expectLogic(logic, () => {
-                    logic.actions.loadRecordingSnapshots('1')
-                })
-                    .toDispatchActions(['loadRecordingSnapshots', 'loadRecordingSnapshotsSuccess'])
-                    .toMatchValues({
-                        sessionPlayerData: { ...recordingSnapshotsJson, snapshots: newSnapshots },
-                        firstChunkLoaded: true,
-                        isPlayable: true,
-                    })
-            })
-            it('session player data is still loading', async () => {
-                const newSnapshots = [
-                    ...recordingSnapshotsJson.snapshots,
-                    {
-                        type: 2,
-                        data: { source: 0 },
-                        timestamp: 1634019260528,
-                    },
-                ]
-                api.get.mockImplementationOnce(async (url: string) => {
-                    if (combineUrl(url).pathname.match(EVENTS_SESSION_RECORDING_SNAPSHOTS_ENDPOINT_REGEX)) {
-                        return {
-                            result: {
-                                ...recordingSnapshotsJson,
-                                snapshots: newSnapshots,
-                            },
-                        }
-                    }
-                })
-
-                await expectLogic(logic, () => {
-                    logic.actions.loadRecordingSnapshots('1')
-                })
-                    .toDispatchActions(['loadRecordingSnapshots'])
-                    .toMatchValues({
-                        firstChunkLoaded: false,
-                        isPlayable: false,
-                    })
-                    .toDispatchActions(['loadRecordingSnapshotsSuccess'])
-                    .toMatchValues({
-                        sessionPlayerData: { ...recordingSnapshotsJson, snapshots: newSnapshots },
-                        firstChunkLoaded: true,
-                        isPlayable: true,
-                    })
-            })
+            resumeKeaLoadersErrors()
+            expect(api.get).toBeCalledTimes(2)
         })
     })
 })

@@ -15,6 +15,7 @@ NOTE: $medium is a SCSS var; not a keyword
 :root {
     --primary: #{$primary};
     --primary-alt: #{$primary_alt};
+    --primary-hover: #{$primary_hover};
     --primary-active: #{$primary_active};
     --primary-bg-hover: #{$primary_bg_hover};
     --primary-bg-active: #{$primary_bg_active};
@@ -28,6 +29,7 @@ NOTE: $medium is a SCSS var; not a keyword
     --bg-charcoal: #{$bg_charcoal};
     --bg-bridge: #{$bg_bridge};
     --bg-shaded: #{$bg_shaded};
+    --bg-light: #{$bg_light};
     --text-default: #{$text_default};
     --text-muted: #{$text_muted};
     --text-light: #{$text_light};
@@ -38,6 +40,7 @@ NOTE: $medium is a SCSS var; not a keyword
     --border-dark: #{$border_dark};
     --border-active: #{$border_active};
     --radius: #{$radius};
+    --shadow-elevation: #{$shadow_elevation};
     // Used for graph series. (Note: color.ts relies on these values being hex)
     --blue: #{$blue_500};
     --blue-light: #{$blue_300};
@@ -67,6 +70,8 @@ NOTE: $medium is a SCSS var; not a keyword
     --lifecycle-returning-hover: #{darken($lifecycle_returning, 20%)};
     --lifecycle-resurrecting-hover: #{darken($lifecycle_resurrecting, 20%)};
     --lifecycle-dormant-hover: #{darken($lifecycle_dormant, 20%)};
+    // Insights
+    --z-graph-tooltip: #{$z_graph_tooltip};
 }
 
 // Text styles
@@ -100,20 +105,37 @@ body strong {
 }
 
 .page-title-row {
-    margin-top: 0.5rem;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 1rem;
+    margin: 1.5rem 0 0.75rem;
+    @media screen and (min-width: $md) {
+        flex-wrap: nowrap;
+    }
 }
 
 .page-title {
+    min-width: 0;
     font-size: 28px;
     line-height: 34px;
-    margin-top: 0.5em;
-    font-weight: bold;
+    margin: 0;
+    font-weight: 600;
 }
 
 .page-caption {
     @extend .text-default;
-    max-width: 640px;
-    margin-bottom: 16px;
+    max-width: 48rem;
+    margin-bottom: 1rem;
+}
+
+.page-buttons {
+    flex-shrink: 0;
+    flex-grow: 1;
+    display: flex;
+    align-items: center;
+    justify-content: right;
+    gap: 0.5rem;
 }
 
 .subtitle-row {
@@ -185,9 +207,21 @@ body strong {
     background: none;
 }
 
+.card-secondary {
+    font-size: 11px;
+    color: $text_muted;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    font-weight: 600;
+}
+
 mark {
     background-color: $mark_color !important;
     border-radius: $radius;
+}
+
+.uppercase {
+    text-transform: uppercase;
 }
 
 // Supplement text, such as email under user name
@@ -196,6 +230,10 @@ mark {
     overflow: hidden;
     color: var(--muted-alt);
     font-size: 0.8125rem;
+    &--danger {
+        color: var(--danger);
+        font-weight: 600;
+    }
 }
 
 code.code {
@@ -315,6 +353,12 @@ code.code {
 .flex-center {
     display: flex;
     align-items: center;
+}
+
+// Vendor-specific adjustments
+
+input::-ms-clear {
+    display: none; // Hide IE/Edge's clear button that can mess input sizing up
 }
 
 // Color styles
@@ -541,6 +585,22 @@ code.code {
     }
 }
 
+.LemonLinkButton {
+    // TODO: This should become a component at some point
+    padding: 1.3rem 1rem !important;
+    font-weight: $medium !important;
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+
+    &.ant-btn {
+        padding-top: 1.3rem !important;
+    }
+    &:not(.ant-btn-primary) {
+        color: $primary;
+    }
+}
+
 // Graph series glyph
 
 .graph-series-glyph {
@@ -554,6 +614,7 @@ code.code {
     align-items: center;
     justify-content: center;
     pointer-events: none;
+    flex-shrink: 0;
 
     // variants
     &.funnel-step-glyph {
@@ -754,20 +815,36 @@ code.code {
 }
 
 .main-app-content {
+    position: relative; // So that scene-level <Loading/> is positioned correctly.
     min-width: 0;
-    padding: 0 2rem 2rem;
+    padding: 0 2rem 4rem;
 
     @media (min-width: $sm) and (max-width: $lg) {
         padding: 0 1rem 2rem;
     }
 
     @media (max-width: $sm) {
-        padding: 0 1rem;
+        padding: 0 1rem 1rem;
     }
 }
 
 // AntD overrrides, placed inside `body` to increase specifity (nicely avoiding the need for !important)
 body {
+    h1,
+    h2,
+    h3,
+    h4 {
+        color: var(--text-default);
+    }
+    h5 {
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--muted-alt);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 0.25rem;
+        line-height: 2;
+    }
     // AntD uses its own border color for the bottom of tab lists, but we want to use `var(--border)`
     .ant-tabs-top,
     .ant-tabs-bottom {
@@ -783,6 +860,9 @@ body {
     }
     .ant-dropdown-menu {
         border-radius: var(--radius);
+    }
+    .ant-modal-content {
+        box-shadow: var(--shadow-elevation);
     }
 }
 

@@ -12,6 +12,7 @@
     height: 1.25rem;
     color: var(--text-default);
     line-height: 1rem;
+    white-space: nowrap;
 
     &.warning {
         background-color: var(--warning);

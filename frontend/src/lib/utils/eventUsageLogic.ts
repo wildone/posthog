@@ -24,7 +24,7 @@ import {
     ItemMode,
     AnyPropertyFilter,
 } from '~/types'
-import { Dayjs } from 'dayjs'
+import { dayjs } from 'lib/dayjs'
 import { preflightLogic } from 'scenes/PreflightCheck/logic'
 import type { PersonsModalParams } from 'scenes/trends/personsModalLogic'
 import { EventIndex } from '@posthog/react-rrweb-player'
@@ -62,6 +62,13 @@ export enum RecordingWatchedSource {
 export enum GraphSeriesAddedSource {
     Default = 'default',
     Duplicate = 'duplicate',
+}
+
+export enum SessionRecordingFilterType {
+    Duration = 'duration',
+    EventAndAction = 'event_and_action',
+    PersonAndCohort = 'person_and_cohort',
+    DateRange = 'date_range',
 }
 
 interface RecordingViewedProps {
@@ -176,15 +183,23 @@ function sanitizeFilterParams(filters: Partial<FilterType>): Record<string, any>
 }
 
 export const eventUsageLogic = kea<
-    eventUsageLogicType<DashboardEventSource, GraphSeriesAddedSource, RecordingWatchedSource>
+    eventUsageLogicType<
+        DashboardEventSource,
+        GraphSeriesAddedSource,
+        RecordingWatchedSource,
+        SessionRecordingFilterType
+    >
 >({
     path: ['lib', 'utils', 'eventUsageLogic'],
-    connect: () => [preflightLogic],
+    connect: {
+        values: [preflightLogic, ['realm'], userLogic, ['user']],
+    },
     actions: {
         reportAnnotationViewed: (annotations: AnnotationType[] | null) => ({ annotations }),
         reportPersonDetailViewed: (person: PersonType) => ({ person }),
         reportInsightCreated: (insight: InsightType | null) => ({ insight }),
         reportInsightViewed: (
+            insightModel: Partial<InsightModel>,
             filters: Partial<FilterType>,
             insightMode: ItemMode,
             isFirstLoad: boolean,
@@ -192,6 +207,7 @@ export const eventUsageLogic = kea<
             delay?: number,
             changedFilters?: Record<string, any>
         ) => ({
+            insightModel,
             filters,
             insightMode,
             isFirstLoad,
@@ -242,9 +258,9 @@ export const eventUsageLogic = kea<
         ) => ({ action, totalProperties, oldPropertyType, newPropertyType }),
         reportDashboardViewed: (dashboard: DashboardType, hasShareToken: boolean) => ({ dashboard, hasShareToken }),
         reportDashboardModeToggled: (mode: DashboardMode, source: DashboardEventSource | null) => ({ mode, source }),
-        reportDashboardRefreshed: (lastRefreshed?: string | Dayjs | null) => ({ lastRefreshed }),
+        reportDashboardRefreshed: (lastRefreshed?: string | dayjs.Dayjs | null) => ({ lastRefreshed }),
         reportDashboardItemRefreshed: (dashboardItem: InsightModel) => ({ dashboardItem }),
-        reportDashboardDateRangeChanged: (dateFrom?: string | Dayjs, dateTo?: string | Dayjs | null) => ({
+        reportDashboardDateRangeChanged: (dateFrom?: string | dayjs.Dayjs, dateTo?: string | dayjs.Dayjs | null) => ({
             dateFrom,
             dateTo,
         }),
@@ -329,8 +345,13 @@ export const eventUsageLogic = kea<
         reportRecordingEventsFetched: (numEvents: number, loadTime: number) => ({ numEvents, loadTime }),
         reportCorrelationAnalysisFeedback: (rating: number) => ({ rating }),
         reportCorrelationAnalysisDetailedFeedback: (rating: number, comments: string) => ({ rating, comments }),
+        reportRecordingsListFetched: (loadTime: number) => ({ loadTime }),
+        reportRecordingsListFilterAdded: (filterType: SessionRecordingFilterType) => ({ filterType }),
+        reportRecordingPlayerSeekbarEventHovered: true,
+        reportRecordingPlayerSpeedChanged: (newSpeed: number) => ({ newSpeed }),
+        reportRecordingPlayerSkipInactivityToggled: (skipInactivity: boolean) => ({ skipInactivity }),
     },
-    listeners: {
+    listeners: ({ values }) => ({
         reportAnnotationViewed: async ({ annotations }, breakpoint) => {
             if (!annotations) {
                 // If value is `null` the component has been unmounted, don't report
@@ -388,7 +409,7 @@ export const eventUsageLogic = kea<
             posthog.capture('insight created', { insight })
         },
         reportInsightViewed: async (
-            { filters, insightMode, isFirstLoad, fromDashboard, delay, changedFilters },
+            { insightModel, filters, insightMode, isFirstLoad, fromDashboard, delay, changedFilters },
             breakpoint
         ) => {
             if (!delay) {
@@ -401,7 +422,7 @@ export const eventUsageLogic = kea<
                 ...sanitizeFilterParams(filters),
                 report_delay: delay,
                 is_first_component_load: isFirstLoad,
-                from_dashboard: fromDashboard, // Whether the insight is on a dashboard
+                from_dashboard: fromDashboard,
             }
 
             properties.total_event_actions_count = (properties.events_count || 0) + (properties.actions_count || 0)
@@ -421,10 +442,6 @@ export const eventUsageLogic = kea<
             if (insight === 'TRENDS') {
                 properties.breakdown_type = filters.breakdown_type
                 properties.breakdown = filters.breakdown
-            } else if (insight === 'SESSIONS') {
-                properties.session_distribution = filters.session
-            } else if (insight === 'FUNNELS') {
-                properties.session_distribution = filters.session
             } else if (insight === 'RETENTION') {
                 properties.period = filters.period
                 properties.date_to = filters.date_to
@@ -445,6 +462,11 @@ export const eventUsageLogic = kea<
             properties.compare = filters.compare // "Compare previous" option
             properties.mode = insightMode // View or edit
 
+            properties.viewer_is_creator = insightModel.created_by?.uuid === values.user?.uuid ?? null // `null` means we couldn't determine this
+            properties.is_saved = insightModel.saved
+            properties.description_length = insightModel.description?.length ?? 0
+            properties.tags_count = insightModel.tags?.length ?? 0
+
             const eventName = delay ? 'insight analyzed' : 'insight viewed'
             posthog.capture(eventName, { ...properties, ...(changedFilters ? changedFilters : {}) })
         },
@@ -458,8 +480,8 @@ export const eventUsageLogic = kea<
                 has_breakdown_value: Boolean(breakdown_value),
                 save_original: saveOriginal,
                 has_search_term: Boolean(searchTerm),
-                count, // Total count of persons
-                has_next: hasNext, // Whether there are other persons to be loaded (pagination)
+                count,
+                has_next: hasNext,
             }
             posthog.capture('insight person modal viewed', properties)
         },
@@ -632,7 +654,7 @@ export const eventUsageLogic = kea<
 
         reportEventSearched: async ({ searchTerm, extraProps }) => {
             // This event is only captured on PostHog Cloud
-            if (preflightLogic.values.realm === 'cloud') {
+            if (values.realm === 'cloud') {
                 // Triggered when a search is executed for an action/event (mainly for use on insights)
                 posthog.capture('event searched', { searchTerm, ...extraProps })
             }
@@ -688,8 +710,8 @@ export const eventUsageLogic = kea<
             const payload: Partial<RecordingViewedProps> = {
                 load_time: loadTime,
                 duration: eventIndex.getDuration(),
-                start_time: recordingData?.session_recording?.start_time,
-                end_time: recordingData?.session_recording?.end_time,
+                start_time: recordingData?.session_recording?.segments[0]?.startTimeEpochMs,
+                end_time: recordingData?.session_recording?.segments.slice(-1)[0]?.endTimeEpochMs,
                 page_change_events_length: eventIndex.pageChangeEvents().length,
                 recording_width: eventIndex.getRecordingMetadata(0)[0]?.width,
                 source: source,
@@ -700,7 +722,7 @@ export const eventUsageLogic = kea<
             posthog.capture(`recording events fetched`, { num_events: numEvents, load_time: loadTime })
         },
         reportRecordingScrollTo: ({ rowIndex }) => {
-            posthog.capture(`recording event list scrolled to row index ${rowIndex ?? -1}`)
+            posthog.capture(`recording event list scrolled`, { rowIndex })
         },
         reportPayGateShown: (props) => {
             posthog.capture('pay gate shown', props)
@@ -739,5 +761,20 @@ export const eventUsageLogic = kea<
                 })
             }
         },
-    },
+        reportRecordingsListFilterAdded: ({ filterType }) => {
+            posthog.capture('recording list filter added', { filter_type: filterType })
+        },
+        reportRecordingsListFetched: ({ loadTime }) => {
+            posthog.capture('recording list fetched', { load_time: loadTime })
+        },
+        reportRecordingPlayerSeekbarEventHovered: () => {
+            posthog.capture('recording player seekbar event hovered')
+        },
+        reportRecordingPlayerSpeedChanged: ({ newSpeed }) => {
+            posthog.capture('recording player speed changed', { new_speed: newSpeed })
+        },
+        reportRecordingPlayerSkipInactivityToggled: ({ skipInactivity }) => {
+            posthog.capture('recording player skip inactivity toggled', { skip_inactivity: skipInactivity })
+        },
+    }),
 })

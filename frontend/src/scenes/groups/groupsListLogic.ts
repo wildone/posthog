@@ -17,7 +17,14 @@ interface GroupsPaginatedResponse {
 export const groupsListLogic = kea<groupsListLogicType<GroupsPaginatedResponse>>({
     path: ['groups', 'groupsListLogic'],
     connect: {
-        values: [teamLogic, ['currentTeamId'], groupsModel, ['groupTypes'], groupsAccessLogic, ['groupsEnabled']],
+        values: [
+            teamLogic,
+            ['currentTeamId'],
+            groupsModel,
+            ['groupTypes', 'aggregationLabel'],
+            groupsAccessLogic,
+            ['groupsEnabled'],
+        ],
     },
     actions: () => ({
         loadGroups: (url?: string | null) => ({ url }),
@@ -47,12 +54,12 @@ export const groupsListLogic = kea<groupsListLogicType<GroupsPaginatedResponse>>
     },
     selectors: {
         currentTabName: [
-            (s) => [s.currentTab, s.groupTypes],
-            (currentTab, groupTypes): string =>
+            (s) => [s.currentTab, s.groupTypes, s.aggregationLabel],
+            (currentTab, groupTypes, aggregationLabel): string =>
                 currentTab === '-1'
                     ? 'Persons'
                     : groupTypes?.length
-                    ? capitalizeFirstLetter(groupTypes[parseInt(currentTab)].group_type)
+                    ? capitalizeFirstLetter(aggregationLabel(parseInt(currentTab)).singular)
                     : '',
         ],
         breadcrumbs: [
@@ -73,7 +80,7 @@ export const groupsListLogic = kea<groupsListLogicType<GroupsPaginatedResponse>>
             return urls.persons()
         },
     }),
-    urlToAction: ({ actions }) => ({
+    urlToAction: ({ actions, values }) => ({
         '/groups/:id': ({ id }) => {
             if (id) {
                 actions.setTab(id)
@@ -81,7 +88,9 @@ export const groupsListLogic = kea<groupsListLogicType<GroupsPaginatedResponse>>
             }
         },
         '/persons': () => {
-            actions.setTab('-1')
+            if (values.currentTab !== '-1') {
+                actions.setTab('-1')
+            }
         },
     }),
 })

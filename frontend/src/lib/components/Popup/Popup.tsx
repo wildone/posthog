@@ -1,10 +1,12 @@
 import './Popup.scss'
-import React, { MouseEventHandler, ReactElement, useContext, useEffect, useMemo, useState } from 'react'
+import React, { MouseEventHandler, ReactElement, useMemo, useState } from 'react'
 import ReactDOM from 'react-dom'
 import { usePopper } from 'react-popper'
 import { useOutsideClickHandler } from 'lib/hooks/useOutsideClickHandler'
 import { Modifier, Placement } from '@popperjs/core'
 import clsx from 'clsx'
+import { useResizeObserver } from 'lib/hooks/useResizeObserver'
+import { CSSTransition } from 'react-transition-group'
 
 export interface PopupProps {
     visible?: boolean
@@ -25,10 +27,10 @@ export interface PopupProps {
     className?: string
 }
 
-// if we're inside a popup inside a popup, prevent the parent's onClickOutside from working
-const PopupContext = React.createContext<number>(0)
-const disabledPopups = new Map<number, number>()
-let uniqueMemoizedIndex = 0
+/** 0 means no parent. */
+export const PopupContext = React.createContext<number>(0)
+
+let uniqueMemoizedIndex = 1
 
 /** This is a custom popup control that uses `react-popper` to position DOM nodes */
 export function Popup({
@@ -43,32 +45,13 @@ export function Popup({
     actionable = false,
     sameWidth = false,
 }: PopupProps): JSX.Element {
-    const popupId = useMemo(() => ++uniqueMemoizedIndex, [])
-
     const [referenceElement, setReferenceElement] = useState<HTMLDivElement | null>(null)
     const [popperElement, setPopperElement] = useState<HTMLDivElement | null>(null)
 
-    const parentPopupId = useContext(PopupContext)
+    const popupId = useMemo(() => uniqueMemoizedIndex++, [])
     const localRefs = [popperElement, referenceElement]
 
-    useEffect(() => {
-        if (visible) {
-            disabledPopups.set(parentPopupId, (disabledPopups.get(parentPopupId) || 0) + 1)
-            return () => {
-                disabledPopups.set(parentPopupId, (disabledPopups.get(parentPopupId) || 0) - 1)
-            }
-        }
-    }, [visible, parentPopupId])
-
-    useOutsideClickHandler(
-        localRefs,
-        (event) => {
-            if (visible && !disabledPopups.get(popupId)) {
-                onClickOutside?.(event)
-            }
-        },
-        [visible, disabledPopups]
-    )
+    useOutsideClickHandler(localRefs, (event) => visible && onClickOutside?.(event), [visible])
 
     const modifiers = useMemo<Partial<Modifier<any, any>>[]>(
         () => [
@@ -101,9 +84,13 @@ export function Popup({
         []
     )
 
-    const { styles, attributes } = usePopper(referenceElement, popperElement, {
+    const { styles, attributes, update } = usePopper(referenceElement, popperElement, {
         placement: placement,
         modifiers,
+    })
+    useResizeObserver({
+        ref: popperElement,
+        onResize: () => update?.(), // When the element is resized, schedule a popper update to reposition
     })
 
     const clonedChildren =
@@ -120,20 +107,22 @@ export function Popup({
     return (
         <>
             {clonedChildren}
-            {visible
-                ? ReactDOM.createPortal(
-                      <div
-                          className={clsx('Popup', actionable && 'Popup--actionable', className)}
-                          ref={setPopperElement}
-                          style={styles.popper}
-                          onClick={onClickInside}
-                          {...attributes.popper}
-                      >
-                          <PopupContext.Provider value={popupId}>{overlay}</PopupContext.Provider>
-                      </div>,
-                      document.querySelector('body') as HTMLElement
-                  )
-                : null}
+            {ReactDOM.createPortal(
+                <CSSTransition in={visible} timeout={100} classNames="Popup-" mountOnEnter unmountOnExit>
+                    <div
+                        className={clsx('Popup', actionable && 'Popup--actionable', className)}
+                        ref={setPopperElement}
+                        style={styles.popper}
+                        onClick={onClickInside}
+                        {...attributes.popper}
+                    >
+                        <div className="Popup__box">
+                            <PopupContext.Provider value={popupId}>{overlay}</PopupContext.Provider>
+                        </div>
+                    </div>
+                </CSSTransition>,
+                document.querySelector('body') as HTMLElement
+            )}
         </>
     )
 }

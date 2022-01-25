@@ -10,7 +10,6 @@ import { trendsLogic } from '../../../trends/trendsLogic'
 import { FilterType, InsightType } from '~/types'
 import { Formula } from './Formula'
 import { TestAccountFilter } from 'scenes/insights/TestAccountFilter'
-import { preflightLogic } from 'scenes/PreflightCheck/logic'
 import './TrendTab.scss'
 import useBreakpoint from 'antd/lib/grid/hooks/useBreakpoint'
 import { GlobalFiltersTitle } from 'scenes/insights/common'
@@ -24,22 +23,29 @@ export interface TrendTabProps {
 }
 
 export function TrendTab({ view }: TrendTabProps): JSX.Element {
-    const { insightProps } = useValues(insightLogic)
+    const { insightProps, allEventNames } = useValues(insightLogic)
     const { filters } = useValues(trendsLogic(insightProps))
     const { setFilters, toggleLifecycle } = useActions(trendsLogic(insightProps))
-    const { preflight } = useValues(preflightLogic)
     const { groupsTaxonomicTypes } = useValues(groupsModel)
     const [isUsingFormulas, setIsUsingFormulas] = useState(filters.formula ? true : false)
     const lifecycles = [
-        { name: 'new', tooltip: 'Users that are new.' },
-        { name: 'resurrecting', tooltip: 'Users who were once active but became dormant, and are now active again.' },
-        { name: 'returning', tooltip: 'Users who consistently use the product.' },
-        { name: 'dormant', tooltip: 'Users who are inactive.' },
+        { name: 'new', tooltip: 'Users who were first seen on this period and did the activity during the period.' },
+        { name: 'returning', tooltip: 'Users who did activity both this and previous period.' },
+        {
+            name: 'resurrecting',
+            tooltip:
+                'Users who did the activity this period but did not do the activity on the previous period (i.e. were inactive for 1 or more periods).',
+        },
+        {
+            name: 'dormant',
+            tooltip:
+                'Users who went dormant on this period, i.e. users who did not do the activity this period but did the activity on the previous period.',
+        },
     ]
     const screens = useBreakpoint()
     const isSmallScreen = screens.xs || (screens.sm && !screens.md)
     const isTrends = !filters.insight || filters.insight === InsightType.TRENDS
-    const formulaAvailable = isTrends && preflight?.is_clickhouse_enabled
+    const formulaAvailable = isTrends
     const formulaEnabled = (filters.events?.length || 0) + (filters.actions?.length || 0) > 0
 
     return (
@@ -101,6 +107,8 @@ export function TrendTab({ view }: TrendTabProps): JSX.Element {
                         <>
                             <GlobalFiltersTitle />
                             <PropertyFilters
+                                propertyFilters={filters.properties}
+                                onChange={(properties) => setFilters({ properties })}
                                 taxonomicGroupTypes={[
                                     TaxonomicFilterGroupType.EventProperties,
                                     TaxonomicFilterGroupType.PersonProperties,
@@ -109,6 +117,7 @@ export function TrendTab({ view }: TrendTabProps): JSX.Element {
                                     TaxonomicFilterGroupType.Elements,
                                 ]}
                                 pageKey="trends-filters"
+                                eventNames={allEventNames}
                             />
                             <TestAccountFilter filters={filters} onChange={setFilters} />
                             {formulaAvailable && (

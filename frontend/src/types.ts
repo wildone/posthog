@@ -1,6 +1,4 @@
 import {
-    ACTION_TYPE,
-    EVENT_TYPE,
     OrganizationMembershipLevel,
     PluginsAccessLevel,
     ShownAsValue,
@@ -22,6 +20,7 @@ import { PostHog } from 'posthog-js'
 import React from 'react'
 import { PopupProps } from 'lib/components/Popup/Popup'
 import { dayjs } from 'lib/dayjs'
+import { ChartDataset, ChartType, InteractionItem } from 'chart.js'
 
 export type Optional<T, K extends string | number | symbol> = Omit<T, K> & { [K in keyof T]?: T[K] }
 
@@ -37,6 +36,15 @@ export enum AvailableFeature {
     PATHS_ADVANCED = 'paths_advanced',
     CORRELATION_ANALYSIS = 'correlation_analysis',
     GROUP_ANALYTICS = 'group_analytics',
+    MULTIVARIATE_FLAGS = 'multivariate_flags',
+    EXPERIMENTATION = 'experimentation',
+}
+
+export enum Realm {
+    Cloud = 'cloud',
+    Demo = 'demo',
+    SelfHostedPostgres = 'hosted',
+    SelfHostedClickHouse = 'hosted-clickhouse',
 }
 
 export type ColumnChoice = string[] | 'DEFAULT'
@@ -67,7 +75,7 @@ export interface UserType extends UserBasicType {
     organization: OrganizationType | null
     team: TeamBasicType | null
     organizations: OrganizationBasicType[]
-    realm: 'cloud' | 'hosted' | 'hosted-clickhouse'
+    realm: Realm
     posthog_version?: string
 }
 
@@ -94,6 +102,10 @@ export interface OrganizationBasicType {
     membership_level: OrganizationMembershipLevel | null
 }
 
+interface OrganizationMetadata {
+    taxonomy_set_events_count: number
+    taxonomy_set_properties_count: number
+}
 export interface OrganizationType extends OrganizationBasicType {
     created_at: string
     updated_at: string
@@ -105,6 +117,7 @@ export interface OrganizationType extends OrganizationBasicType {
     available_features: AvailableFeature[]
     domain_whitelist: string[]
     is_member_join_email_enabled: boolean
+    metadata?: OrganizationMetadata
 }
 
 /** Member properties relevant at both organization and project level. */
@@ -186,7 +199,6 @@ export interface TeamType extends TeamBasicType {
     app_urls: string[]
     slack_incoming_webhook: string
     session_recording_opt_in: boolean
-    session_recording_retention_period_days: number | null
     test_account_filters: AnyPropertyFilter[]
     path_cleaning_filters: Record<string, any>[]
     data_attributes: string[]
@@ -295,12 +307,20 @@ export enum PropertyOperator {
     LessThan = 'lt',
     IsSet = 'is_set',
     IsNotSet = 'is_not_set',
+    IsDateBefore = 'is_date_before',
+    IsDateAfter = 'is_date_after',
 }
 
 export enum SavedInsightsTabs {
     All = 'all',
     Yours = 'yours',
     Favorites = 'favorites',
+}
+
+export enum ExperimentsTabs {
+    All = 'all',
+    Yours = 'yours',
+    Archived = 'archived',
 }
 
 /** Sync with plugin-server/src/types.ts */
@@ -338,18 +358,36 @@ export interface CohortPropertyFilter extends BasePropertyFilter {
 
 export type SessionRecordingId = string
 
+export interface PlayerPosition {
+    time: number
+    windowId: string
+}
+
+export interface RecordingSegment {
+    startPlayerPosition: PlayerPosition // Player time (for the specific window_id's player) that the segment starts. If the segment starts 10 seconds into a recording, this would be 10000
+    endPlayerPosition: PlayerPosition // Player time (for the specific window_id' player) that the segment ends
+    startTimeEpochMs: number // Epoch time that the segment starts
+    endTimeEpochMs: number // Epoch time that the segment ends
+    durationMs: number
+    windowId: string
+    isActive: boolean
+}
+
+export interface RecordingStartAndEndTime {
+    startTimeEpochMs: number
+    endTimeEpochMs: number
+}
+
 export interface SessionRecordingMeta {
-    id: string
-    viewed: boolean
-    recording_duration: number
-    start_time: number
-    end_time: number
-    distinct_id: string
+    segments: RecordingSegment[]
+    startAndEndTimesByWindowId: Record<string, RecordingStartAndEndTime>
+    recordingDurationMs: number
 }
 export interface SessionPlayerData {
-    snapshots: eventWithTime[]
+    snapshotsByWindowId: Record<string, eventWithTime[]>
     person: PersonType | null
     session_recording: SessionRecordingMeta
+    bufferedTo: PlayerPosition
     next?: string
 }
 
@@ -363,13 +401,8 @@ export enum SessionPlayerState {
     BUFFER = 'buffer',
     PLAY = 'play',
     PAUSE = 'pause',
-    SKIP = 'skip',
     SCRUB = 'scrub',
-}
-
-export interface SessionPlayerTime {
-    current: number
-    lastBuffered: number
+    SKIP = 'skip',
 }
 
 /** Sync with plugin-server/src/types.ts */
@@ -399,30 +432,6 @@ export interface SessionRecordingsResponse {
     results: SessionRecordingType[]
     has_next: boolean
 }
-
-interface RecordingNotViewedFilter extends BasePropertyFilter {
-    type: 'recording'
-    key: 'unseen'
-}
-
-export type RecordingPropertyFilter = RecordingDurationFilter | RecordingNotViewedFilter
-
-export interface ActionTypePropertyFilter extends BasePropertyFilter {
-    type: typeof ACTION_TYPE
-    properties?: Array<EventPropertyFilter>
-}
-
-export interface EventTypePropertyFilter extends BasePropertyFilter {
-    type: typeof EVENT_TYPE
-    properties?: Array<EventPropertyFilter>
-}
-
-export type SessionsPropertyFilter =
-    | PersonPropertyFilter
-    | CohortPropertyFilter
-    | RecordingPropertyFilter
-    | ActionTypePropertyFilter
-    | EventTypePropertyFilter
 
 export type EntityType = 'actions' | 'events' | 'new_entity'
 
@@ -465,22 +474,33 @@ export interface PersonType {
     created_at?: string
 }
 
-export interface PersonActorType {
-    type: 'person'
-    id?: string
+interface MatchedRecordingEvents {
+    uuid: string
+    window_id: string
+    timestamp: string
+}
+export interface MatchedRecording {
+    session_id: string
+    events: MatchedRecordingEvents[]
+}
+
+interface CommonActorType {
+    id?: string | number
     properties: Record<string, any>
     created_at?: string
+    matched_recordings?: MatchedRecording[]
+}
+
+export interface PersonActorType extends CommonActorType {
+    type: 'person'
     uuid?: string
     name?: string
     distinct_ids: string[]
     is_identified: boolean
 }
 
-export interface GroupActorType {
+export interface GroupActorType extends CommonActorType {
     type: 'group'
-    id?: string | number
-    properties: Record<string, any>
-    created_at?: string
     group_key: string
     group_type_index: number
 }
@@ -542,6 +562,9 @@ export enum StepOrderValue {
 export enum PersonsTabType {
     EVENTS = 'events',
     SESSION_RECORDINGS = 'sessionRecordings',
+    PROPERTIES = 'properties',
+    COHORTS = 'cohorts',
+    RELATED = 'related',
 }
 
 export enum LayoutView {
@@ -561,17 +584,15 @@ export interface EventType {
     id: number | string
     properties: Record<string, any>
     timestamp: string
-    zeroOffsetTime?: number // Used in session recording events that have a start time offset
     colonTimestamp?: string // Used in session recording events list
     person?: Partial<PersonType> | null
     event: string
 }
 
-export interface RecordingEventType extends Omit<EventType, 'timestamp'> {
-    percentage: number
-    timestamp: number
-    queryValue?: string
-    colonTimestamp?: string
+export interface RecordingEventType extends EventType {
+    playerTime: number
+    playerPosition: PlayerPosition
+    percentageOfRecordingDuration: number // Used to place the event on the seekbar
 }
 
 export interface EventsTableRowItem {
@@ -625,6 +646,13 @@ export interface PlanInterface {
 
 // Creating a nominal type: https://github.com/microsoft/TypeScript/issues/202#issuecomment-961853101
 export type InsightShortId = string & { readonly '': unique symbol }
+export enum InsightColor {
+    White = 'white',
+    Black = 'black',
+    Blue = 'blue',
+    Green = 'green',
+    Purple = 'purple',
+}
 
 export interface InsightModel {
     /** The unique key we use when communicating with the user, e.g. in URLs */
@@ -641,7 +669,7 @@ export interface InsightModel {
     saved: boolean
     created_at: string
     layouts: Record<string, any>
-    color: string | null
+    color: InsightColor | null
     last_refresh: string
     refreshing: boolean
     created_by: UserBasicType | null
@@ -781,15 +809,13 @@ export enum ChartDisplayType {
     FunnelViz = 'FunnelViz',
 }
 
-export type ShownAsType = ShownAsValue // DEPRECATED: Remove when releasing `remove-shownas`
 export type BreakdownType = 'cohort' | 'person' | 'event' | 'group'
-export type IntervalType = 'minute' | 'hour' | 'day' | 'week' | 'month'
+export type IntervalType = 'hour' | 'day' | 'week' | 'month'
 
 export enum InsightType {
     TRENDS = 'TRENDS',
     STICKINESS = 'STICKINESS',
     LIFECYCLE = 'LIFECYCLE',
-    SESSIONS = 'SESSIONS',
     FUNNELS = 'FUNNELS',
     RETENTION = 'RETENTION',
     PATHS = 'PATHS',
@@ -836,10 +862,13 @@ export interface FilterType {
     breakdowns?: Breakdown[]
     breakdown_value?: string | number
     breakdown_group_type_index?: number | null
-    shown_as?: ShownAsType
+    shown_as?: ShownAsValue
     session?: string
     period?: string
+
     retention_type?: RetentionType
+    retention_reference?: 'total' | 'previous' // retention wrt cohort size or previous period
+
     new_entity?: Record<string, any>[]
     returning_entity?: Record<string, any>
     target_entity?: Record<string, any>
@@ -862,7 +891,7 @@ export interface FilterType {
     funnel_step?: number
     entrance_period_start?: string // this and drop_off is used for funnels time conversion date for the persons modal
     drop_off?: boolean
-    funnel_viz_type?: string // parameter sent to funnels API for time conversion code path
+    funnel_viz_type?: FunnelVizType // parameter sent to funnels API for time conversion code path
     funnel_from_step?: number // used in time to convert: initial step index to compute time to convert
     funnel_to_step?: number // used in time to convert: ending step index to compute time to convert
     funnel_step_breakdown?: string | number[] | number | null // used in steps breakdown: persons modal
@@ -872,7 +901,6 @@ export interface FilterType {
     funnel_window_interval?: number | undefined // length of conversion window
     funnel_order_type?: StepOrderValue
     exclusions?: FunnelStepRangeEntityFilter[] // used in funnel exclusion filters
-    hiddenLegendKeys?: Record<string, boolean | undefined> // used to toggle visibility of breakdowns with legend
     exclude_events?: string[] // Paths Exclusion type
     step_limit?: number // Paths Step Limit
     path_start_key?: string // Paths People Start Key
@@ -890,7 +918,8 @@ export interface FilterType {
     funnel_custom_steps?: number[] // used to provide custom steps for which to get people in a funnel - primarily for correlation use
     aggregation_group_type_index?: number | undefined // Groups aggregation
     funnel_advanced?: boolean // used to toggle advanced options on or off
-    legend_hidden?: boolean // used to show/hide legend next to insights graph
+    show_legend?: boolean // used to show/hide legend next to insights graph
+    hidden_legend_keys?: Record<string, boolean | undefined> // used to toggle visibilities in table and legend
 }
 
 export interface RecordingEventsFilters {
@@ -971,6 +1000,7 @@ export interface ActionFilter extends EntityFilter {
 
 export interface TrendResult {
     action: ActionFilter
+    actions?: ActionFilter[]
     count: number
     data: number[]
     days: string[]
@@ -980,15 +1010,16 @@ export interface TrendResult {
     breakdown_value?: string | number
     aggregated_value: number
     status?: string
-    compare_label?: string
+    compare_label?: CompareLabelType
+    compare?: boolean
+    persons_urls?: { url: string }[]
+    persons?: Person
+    filter?: FilterType
 }
 
-export interface TrendResultWithAggregate extends TrendResult {
-    aggregated_value: number
-    persons: {
-        url: string
-        filter: Partial<FilterType>
-    }
+interface Person {
+    url: string
+    filter: Partial<FilterType>
 }
 
 export interface FunnelStep {
@@ -1145,7 +1176,7 @@ export interface FeatureFlagGroupType {
 
 export interface MultivariateFlagVariant {
     key: string
-    name: string | null
+    name?: string | null
     rollout_percentage: number
 }
 
@@ -1216,12 +1247,10 @@ export interface PreflightStatus {
     can_create_org: boolean
     /** Whether this is PostHog Cloud. */
     cloud: boolean
+    /** Whether this is a managed demo environment. */
+    demo: boolean
     celery: boolean
-    /** Whether EE code is available (but not necessarily a license). */
-    ee_available?: boolean
-    /** Is ClickHouse used as the analytics database instead of Postgres. */
-    is_clickhouse_enabled?: boolean
-    realm: 'cloud' | 'hosted' | 'hosted-clickhouse'
+    realm: Realm
     db_backend?: 'postgres' | 'clickhouse'
     available_social_auth_providers: AuthBackends
     available_timezones?: Record<string, number>
@@ -1304,6 +1333,14 @@ export interface EventDefinition {
     updated_by?: UserBasicType | null
 }
 
+// TODO duplicated from plugin server. Follow-up to de-duplicate
+export enum PropertyType {
+    DateTime = 'DateTime',
+    String = 'String',
+    Numeric = 'Numeric',
+    Boolean = 'Boolean',
+}
+
 export interface PropertyDefinition {
     id: string
     name: string
@@ -1314,6 +1351,8 @@ export interface PropertyDefinition {
     updated_at?: string
     updated_by?: UserBasicType | null
     is_numerical?: boolean // Marked as optional to allow merge of EventDefinition & PropertyDefinition
+    is_event_property?: boolean // Indicates whether this property has been seen for a particular set of events (when `eventNames` query string is sent); calculated at query time, not stored in the db
+    property_type?: PropertyType
 }
 
 export interface PersonProperty {
@@ -1324,6 +1363,8 @@ export interface PersonProperty {
 export interface GroupType {
     group_type: string
     group_type_index: number
+    name_singular?: string | null
+    name_plural?: string | null
 }
 
 export type GroupTypeProperties = Record<number, Array<PersonProperty>>
@@ -1336,37 +1377,32 @@ export interface Group {
 }
 
 export interface Experiment {
-    id: number | null
+    id: number
     name: string
     description?: string
     feature_flag_key: string
     filters: FilterType
-    parameters: Record<string, any>
+    parameters: {
+        minimum_detectable_effect?: number
+        recommended_running_time?: number
+        recommended_sample_size?: number
+        feature_flag_variants?: MultivariateFlagVariant[]
+    }
     start_date?: string
     end_date?: string
+    archived?: boolean
+    secondary_metrics: FilterType[]
     created_at: string
     created_by: UserBasicType | null
 }
 export interface ExperimentResults {
-    funnel: FunnelStep[][]
-    probability: number
+    insight: FunnelStep[][] | TrendResult[]
+    probability: Record<string, number>
     filters: FilterType
     itemID: string
+    significant: boolean
+    noData?: boolean
 }
-
-interface RelatedPerson {
-    type: 'person'
-    id: string
-    person: Pick<PersonType, 'distinct_ids' | 'properties'>
-}
-
-interface RelatedGroup {
-    type: 'group'
-    group_type_index: number
-    id: string
-}
-
-export type RelatedActor = RelatedPerson | RelatedGroup
 
 export interface SelectOption {
     value: string
@@ -1410,6 +1446,7 @@ export interface AppContext {
     preflight: PreflightStatus
     default_event_name: string
     persisted_feature_flags?: string[]
+    anonymous: boolean
 }
 
 export type StoredMetricMathOperations = 'max' | 'min' | 'sum'
@@ -1472,4 +1509,84 @@ export interface Breadcrumb {
     path?: string
     /** Whether to show a custom popup */
     popup?: Pick<PopupProps, 'overlay' | 'sameWidth' | 'actionable'>
+}
+
+export enum GraphType {
+    Bar = 'bar',
+    HorizontalBar = 'horizontalBar',
+    Line = 'line',
+    Histogram = 'histogram',
+    Pie = 'doughnut',
+}
+
+export type GraphDataset = ChartDataset<ChartType> &
+    Partial<
+        Pick<
+            TrendResult,
+            | 'count'
+            | 'label'
+            | 'days'
+            | 'labels'
+            | 'data'
+            | 'compare'
+            | 'compare_label'
+            | 'status'
+            | 'action'
+            | 'actions'
+            | 'breakdown_value'
+            | 'persons_urls'
+            | 'persons'
+            | 'filter'
+        >
+    > & {
+        /** Used in filtering out visibility of datasets. Set internally by chart.js */
+        id: number
+        /** Toggled on to draw incompleteness lines in LineGraph.tsx */
+        dotted?: boolean
+        /** Array of breakdown values used only in ActionsHorizontalBar.tsx data */
+        breakdownValues?: (string | number | undefined)[]
+        /** Array of compare labels used only in ActionsHorizontalBar.tsx data */
+        compareLabels?: (CompareLabelType | undefined)[]
+        /** Array of persons ussed only in (ActionsHorizontalBar|ActionsPie).tsx */
+        personsValues?: (Person | undefined)[]
+        index?: number
+        /** Value (count) for specific data point; only valid in the context of an xy intercept */
+        pointValue?: number
+        /** Value (count) for specific data point; only valid in the context of an xy intercept */
+        personUrl?: string
+        /** Action/event filter defition */
+        action?: ActionFilter
+    }
+
+export type GraphPoint = InteractionItem & { dataset: GraphDataset }
+interface PointsPayload {
+    pointsIntersectingLine: GraphPoint[]
+    pointsIntersectingClick: GraphPoint[]
+    clickedPointNotLine: boolean
+    referencePoint: GraphPoint
+}
+
+export interface GraphPointPayload {
+    points: PointsPayload
+    index: number
+    label?: string // Soon to be deprecated with LEGACY_LineGraph
+    day?: string // Soon to be deprecated with LEGACY_LineGraph
+    value?: number
+    /** Contains the dataset for all the points in the same x-axis point; allows switching between matching points in the x-axis */
+    crossDataset?: GraphDataset[]
+    /** ID for the currently selected series */
+    seriesId?: number
+}
+
+export enum CompareLabelType {
+    Current = 'current',
+    Previous = 'previous',
+}
+
+export interface InstanceSetting {
+    key: string
+    value: boolean | string | number
+    value_type: 'bool' | 'str' | 'int'
+    description?: string
+    editable: boolean
 }

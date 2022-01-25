@@ -1,11 +1,12 @@
 import Piscina from '@posthog/piscina'
 import * as IORedis from 'ioredis'
 
+import { ONE_HOUR } from '../../src/config/constants'
 import { startPluginsServer } from '../../src/main/pluginsServer'
-import { LogLevel } from '../../src/types'
+import { AlertLevel, LogLevel, Service } from '../../src/types'
 import { Hub } from '../../src/types'
 import { Client } from '../../src/utils/celery/client'
-import { delay, UUIDT } from '../../src/utils/utils'
+import { createRedis, delay, UUIDT } from '../../src/utils/utils'
 import { makePiscina } from '../../src/worker/piscina'
 import { createPosthog, DummyPostHog } from '../../src/worker/vm/extensions/posthog'
 import { writeToFile } from '../../src/worker/vm/extensions/test-utils'
@@ -15,7 +16,6 @@ import { delayUntilEventIngested } from '../shared/process-event'
 
 const { console: testConsole } = writeToFile
 const HISTORICAL_EVENTS_COUNTER_CACHE_KEY = '@plugin/60/2/historical_events_seen'
-const ONE_HOUR = 1000 * 60 * 60
 
 jest.mock('../../src/utils/status')
 jest.setTimeout(60000) // 60 sec timeout
@@ -34,7 +34,7 @@ const indexJs = `
     }
 
     export function onEvent (event, { global }) {
-        // we use this to mock setupPlugin being 
+        // we use this to mock setupPlugin being
         // run after some events were already ingested
         global.timestampBoundariesForTeam = {
             max: new Date(),
@@ -57,6 +57,10 @@ const indexJs = `
 
     export async function onAction(action, event) {
         testConsole.log('onAction', action, event)
+    }
+
+    export async function handleAlert(alert) {
+        testConsole.log('handleAlert', alert)
     }
 `
 
@@ -201,6 +205,42 @@ describe('e2e', () => {
                     distinct_id: 'plugin-id-60',
                     team_id: 2,
                     event: 'onAction event',
+                })
+            )
+        })
+    })
+
+    describe('handleAlert', () => {
+        const awaitHandleAlertLogs = async () =>
+            await new Promise((resolve) => {
+                resolve(testConsole.read().filter((log) => log[0] === 'handleAlert'))
+            })
+
+        test('handleAlert receives alert correctly', async () => {
+            const alert = {
+                id: 'some id',
+                key: 'alert name',
+                description: 'alert description',
+                level: AlertLevel.P0,
+                trigger_location: Service.PluginServer,
+            }
+
+            await redis.publish('plugins-alert', JSON.stringify(alert))
+
+            await delayUntilEventIngested(awaitHandleAlertLogs, 1)
+
+            const log = testConsole.read().filter((log) => log[0] === 'handleAlert')[0]
+
+            const [logName, loggedAlert] = log
+
+            expect(logName).toEqual('handleAlert')
+            expect(loggedAlert).toEqual(
+                expect.objectContaining({
+                    id: 'some id',
+                    key: 'alert name',
+                    description: 'alert description',
+                    level: AlertLevel.P0,
+                    trigger_location: Service.PluginServer,
                 })
             )
         })

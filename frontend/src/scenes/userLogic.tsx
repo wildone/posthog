@@ -7,9 +7,13 @@ import posthog from 'posthog-js'
 import { toast } from 'react-toastify'
 import { getAppContext } from 'lib/utils/getAppContext'
 import { teamLogic } from './teamLogic'
+import { preflightLogic } from './PreflightCheck/logic'
 
 export const userLogic = kea<userLogicType>({
     path: ['scenes', 'userLogic'],
+    connect: {
+        values: [preflightLogic, ['preflight']],
+    },
     actions: () => ({
         loadUser: (resetOnFailure?: boolean) => ({ resetOnFailure }),
         updateCurrentTeam: (teamId: number, destination?: string) => ({ teamId, destination }),
@@ -98,6 +102,7 @@ export const userLogic = kea<userLogicType>({
                             slug: user.organization.slug,
                             created_at: user.organization.created_at,
                             available_features: user.organization.available_features,
+                            ...user.organization.metadata,
                         })
                     }
                 }
@@ -138,6 +143,13 @@ export const userLogic = kea<userLogicType>({
             (user) => {
                 return (feature: AvailableFeature) => !!user?.organization?.available_features.includes(feature)
             },
+        ],
+        upgradeLink: [
+            (s) => [s.preflight],
+            (preflight): string =>
+                preflight?.cloud
+                    ? '/organization/billing'
+                    : 'https://license.posthog.com?utm_medium=in-product&utm_campaign=in-product-upgrade',
         ],
         otherOrganizations: [
             (s) => [s.user],

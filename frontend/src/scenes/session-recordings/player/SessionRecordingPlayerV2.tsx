@@ -1,31 +1,24 @@
 import './styles.scss'
 import React, { useEffect, useRef } from 'react'
 import { useActions, useValues } from 'kea'
-import { featureFlagLogic } from 'lib/logic/featureFlagLogic'
 import { PLAYBACK_SPEEDS, sessionRecordingPlayerLogic } from './sessionRecordingPlayerLogic'
 import { PlayerFrame } from 'scenes/session-recordings/player/PlayerFrame'
 import { PlayerController } from 'scenes/session-recordings/player/PlayerController'
 import { PlayerEvents } from 'scenes/session-recordings/player/PlayerEvents'
 import { Col, Row } from 'antd'
-import { FEATURE_FLAGS } from 'lib/constants'
-import { PlayerMeta } from 'scenes/session-recordings/player/PlayerMeta'
+import { PlayerMeta } from './PlayerMeta'
 
 export function SessionRecordingPlayerV2(): JSX.Element {
-    const { togglePlayPause, seekForward, seekBackward, setSpeed, initReplayer, stopAnimation } =
+    const { togglePlayPause, seekForward, seekBackward, setSpeed, setRootFrame } =
         useActions(sessionRecordingPlayerLogic)
-    const { isPlayable, isSmallScreen } = useValues(sessionRecordingPlayerLogic)
-    const { featureFlags } = useValues(featureFlagLogic)
+    const { isSmallScreen } = useValues(sessionRecordingPlayerLogic)
     const frame = useRef<HTMLDivElement | null>(null)
-
     // Need useEffect to populate replayer on component paint
     useEffect(() => {
-        if (frame.current && isPlayable) {
-            stopAnimation()
-            initReplayer(frame)
-
-            return () => stopAnimation()
+        if (frame.current) {
+            setRootFrame(frame.current)
         }
-    }, [frame, isPlayable])
+    }, [frame])
 
     const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>): void => {
         // Don't trigger keydown evens if in input box
@@ -55,12 +48,12 @@ export function SessionRecordingPlayerV2(): JSX.Element {
                 <div className="player-container ph-no-capture">
                     <PlayerFrame ref={frame} />
                 </div>
-                {featureFlags[FEATURE_FLAGS.NEW_SESSIONS_PLAYER_EVENTS_LIST] && !isSmallScreen && <PlayerSidebar />}
+                {!isSmallScreen && <PlayerSidebar />}
             </Row>
             <Row className="player-controller" align="middle">
                 <PlayerController />
             </Row>
-            {featureFlags[FEATURE_FLAGS.NEW_SESSIONS_PLAYER_EVENTS_LIST] && isSmallScreen && <PlayerSidebar />}
+            {isSmallScreen && <PlayerSidebar />}
         </Col>
     )
 }

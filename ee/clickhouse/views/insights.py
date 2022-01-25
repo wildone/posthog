@@ -1,22 +1,15 @@
 import json
-from typing import Any, Dict, Type
+from typing import Any, Dict
 
 from rest_framework.decorators import action
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from ee.clickhouse.queries.funnels import (
-    ClickhouseFunnel,
-    ClickhouseFunnelBase,
-    ClickhouseFunnelStrict,
-    ClickhouseFunnelTimeToConvert,
-    ClickhouseFunnelTrends,
-    ClickhouseFunnelUnordered,
-)
+from ee.clickhouse.queries.funnels import ClickhouseFunnelTimeToConvert, ClickhouseFunnelTrends
 from ee.clickhouse.queries.funnels.funnel_correlation import FunnelCorrelation
+from ee.clickhouse.queries.funnels.utils import get_funnel_order_class
 from ee.clickhouse.queries.paths import ClickhousePaths
 from ee.clickhouse.queries.retention.clickhouse_retention import ClickhouseRetention
-from ee.clickhouse.queries.sessions.clickhouse_sessions import ClickhouseSessions
 from ee.clickhouse.queries.stickiness.clickhouse_stickiness import ClickhouseStickiness
 from ee.clickhouse.queries.trends.clickhouse_trends import ClickhouseTrends
 from ee.clickhouse.queries.util import get_earliest_timestamp
@@ -24,18 +17,15 @@ from posthog.api.insight import InsightViewSet
 from posthog.constants import (
     INSIGHT_FUNNELS,
     INSIGHT_PATHS,
-    INSIGHT_SESSIONS,
     INSIGHT_STICKINESS,
     PATHS_INCLUDE_EVENT_TYPES,
     TRENDS_STICKINESS,
-    FunnelOrderType,
     FunnelVizType,
 )
 from posthog.decorators import cached_function
 from posthog.models.filters import Filter
 from posthog.models.filters.path_filter import PathFilter
 from posthog.models.filters.retention_filter import RetentionFilter
-from posthog.models.filters.sessions_filter import SessionsFilter
 from posthog.models.filters.stickiness_filter import StickinessFilter
 
 
@@ -56,15 +46,6 @@ class ClickhouseInsightsViewSet(InsightViewSet):
 
         self._refresh_dashboard(request=request)
         return {"result": result}
-
-    @cached_function
-    def calculate_session(self, request: Request) -> Dict[str, Any]:
-        return {
-            "result": ClickhouseSessions().run(
-                team=self.team,
-                filter=SessionsFilter(request=request, data={"insight": INSIGHT_SESSIONS}, team=self.team),
-            )
-        }
 
     @cached_function
     def calculate_path(self, request: Request) -> Dict[str, Any]:
@@ -90,23 +71,12 @@ class ClickhouseInsightsViewSet(InsightViewSet):
         team = self.team
         filter = Filter(request=request, data={"insight": INSIGHT_FUNNELS}, team=self.team)
 
-        funnel_order_class: Type[ClickhouseFunnelBase] = ClickhouseFunnel
-        if filter.funnel_order_type == FunnelOrderType.UNORDERED:
-            funnel_order_class = ClickhouseFunnelUnordered
-        elif filter.funnel_order_type == FunnelOrderType.STRICT:
-            funnel_order_class = ClickhouseFunnelStrict
-
         if filter.funnel_viz_type == FunnelVizType.TRENDS:
-            return {
-                "result": ClickhouseFunnelTrends(team=team, filter=filter, funnel_order_class=funnel_order_class).run()
-            }
+            return {"result": ClickhouseFunnelTrends(team=team, filter=filter).run()}
         elif filter.funnel_viz_type == FunnelVizType.TIME_TO_CONVERT:
-            return {
-                "result": ClickhouseFunnelTimeToConvert(
-                    team=team, filter=filter, funnel_order_class=funnel_order_class
-                ).run()
-            }
+            return {"result": ClickhouseFunnelTimeToConvert(team=team, filter=filter).run()}
         else:
+            funnel_order_class = get_funnel_order_class(filter)
             return {"result": funnel_order_class(team=team, filter=filter).run()}
 
     # ******************************************
