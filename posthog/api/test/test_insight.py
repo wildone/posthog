@@ -691,7 +691,7 @@ class TestInsight(ClickhouseTestMixin, LicensedTestMixin, APIBaseTest, QueryMatc
         self.organization_membership.save()
         self.team.access_control = True
         self.team.save()
-        self_team_membership = ExplicitTeamMembership.objects.create(
+        ExplicitTeamMembership.objects.create(
             team=self.team, parent_membership=self.organization_membership, level=ExplicitTeamMembership.Level.MEMBER
         )
         response = self.client.get(
@@ -705,7 +705,7 @@ class TestInsight(ClickhouseTestMixin, LicensedTestMixin, APIBaseTest, QueryMatc
         Various regression tests for the serializer
         """
         # Display
-        response = self.client.get(
+        self.client.get(
             f"/api/projects/{self.team.id}/insights/trend/?events={json.dumps([{'id': '$pageview'}])}&properties=%5B%5D&display=ActionsLineGraph"
         )
 
@@ -713,7 +713,7 @@ class TestInsight(ClickhouseTestMixin, LicensedTestMixin, APIBaseTest, QueryMatc
 
         # Properties with an array
         events = [{"id": "$pageview", "properties": [{"key": "something", "value": ["something"]}]}]
-        response = self.client.get(
+        self.client.get(
             f"/api/projects/{self.team.id}/insights/trend/?events={json.dumps(events)}&properties=%5B%5D&display=ActionsLineGraph"
         )
         self.assertEqual(patch_capture_exception.call_count, 0, patch_capture_exception.call_args_list)
@@ -723,7 +723,7 @@ class TestInsight(ClickhouseTestMixin, LicensedTestMixin, APIBaseTest, QueryMatc
             {"id": "$pageview", "properties": [{"key": "something", "value": ["something"]}]},
             {"id": "$pageview"},
         ]
-        response = self.client.post(
+        self.client.post(
             f"/api/projects/{self.team.id}/insights/funnel/",
             {"events": events, "breakdown": [123, 8124], "breakdown_type": "cohort"},
         )

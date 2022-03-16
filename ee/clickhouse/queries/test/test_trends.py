@@ -128,7 +128,7 @@ class TestClickhouseTrends(ClickhouseTestMixin, trend_test_factory(ClickhouseTre
             ],
         }
 
-        people = journeys_for(events_by_person=journey, team=self.team)
+        journeys_for(events_by_person=journey, team=self.team)
 
         filter = Filter(
             data={
@@ -593,7 +593,7 @@ class TestClickhouseTrends(ClickhouseTestMixin, trend_test_factory(ClickhouseTre
     # this ensures that the properties don't conflict when formatting params
     @test_with_materialized_columns(["$current_url"])
     def test_action_with_prop(self):
-        person = Person.objects.create(
+        Person.objects.create(
             team_id=self.team.pk, distinct_ids=["blabla", "anonymous_id"], properties={"$some_prop": "some_val"}
         )
         sign_up_action = Action.objects.create(team=self.team, name="sign up")
@@ -818,7 +818,7 @@ class TestClickhouseTrends(ClickhouseTestMixin, trend_test_factory(ClickhouseTre
         self.assertEqual(response[0]["breakdown_value"], "test2@posthog.com")
 
     def _create_active_user_events(self):
-        p0 = Person.objects.create(team_id=self.team.pk, distinct_ids=["p0"], properties={"name": "p1"})
+        Person.objects.create(team_id=self.team.pk, distinct_ids=["p0"], properties={"name": "p1"})
         _create_event(
             team=self.team,
             event="$pageview",
@@ -827,7 +827,7 @@ class TestClickhouseTrends(ClickhouseTestMixin, trend_test_factory(ClickhouseTre
             properties={"key": "val"},
         )
 
-        p1 = Person.objects.create(team_id=self.team.pk, distinct_ids=["p1"], properties={"name": "p1"})
+        Person.objects.create(team_id=self.team.pk, distinct_ids=["p1"], properties={"name": "p1"})
         _create_event(
             team=self.team,
             event="$pageview",
@@ -850,7 +850,7 @@ class TestClickhouseTrends(ClickhouseTestMixin, trend_test_factory(ClickhouseTre
             properties={"key": "val"},
         )
 
-        p2 = Person.objects.create(team_id=self.team.pk, distinct_ids=["p2"], properties={"name": "p2"})
+        Person.objects.create(team_id=self.team.pk, distinct_ids=["p2"], properties={"name": "p2"})
         _create_event(
             team=self.team,
             event="$pageview",
@@ -896,7 +896,7 @@ class TestClickhouseTrends(ClickhouseTestMixin, trend_test_factory(ClickhouseTre
     @test_with_materialized_columns(["key"])
     def test_breakdown_active_user_math(self):
 
-        p1 = Person.objects.create(team_id=self.team.pk, distinct_ids=["p1"], properties={"name": "p1"})
+        Person.objects.create(team_id=self.team.pk, distinct_ids=["p1"], properties={"name": "p1"})
         _create_event(
             team=self.team,
             event="$pageview",
@@ -919,7 +919,7 @@ class TestClickhouseTrends(ClickhouseTestMixin, trend_test_factory(ClickhouseTre
             properties={"key": "val"},
         )
 
-        p2 = Person.objects.create(team_id=self.team.pk, distinct_ids=["p2"], properties={"name": "p2"})
+        Person.objects.create(team_id=self.team.pk, distinct_ids=["p2"], properties={"name": "p2"})
         _create_event(
             team=self.team,
             event="$pageview",
@@ -948,7 +948,7 @@ class TestClickhouseTrends(ClickhouseTestMixin, trend_test_factory(ClickhouseTre
 
     @test_with_materialized_columns(event_properties=["key"], person_properties=["name"])
     def test_filter_test_accounts(self):
-        p1 = Person.objects.create(team_id=self.team.pk, distinct_ids=["p1"], properties={"name": "p1"})
+        Person.objects.create(team_id=self.team.pk, distinct_ids=["p1"], properties={"name": "p1"})
         _create_event(
             team=self.team,
             event="$pageview",
@@ -957,7 +957,7 @@ class TestClickhouseTrends(ClickhouseTestMixin, trend_test_factory(ClickhouseTre
             properties={"key": "val"},
         )
 
-        p2 = Person.objects.create(team_id=self.team.pk, distinct_ids=["p2"], properties={"name": "p2"})
+        Person.objects.create(team_id=self.team.pk, distinct_ids=["p2"], properties={"name": "p2"})
         _create_event(
             team=self.team,
             event="$pageview",
@@ -1028,7 +1028,7 @@ class TestClickhouseTrends(ClickhouseTestMixin, trend_test_factory(ClickhouseTre
 
     @test_with_materialized_columns(person_properties=["key", "key_2"], verify_no_jsonextract=False)
     def test_breakdown_multiple_cohorts(self):
-        p1 = Person.objects.create(team_id=self.team.pk, distinct_ids=["p1"], properties={"key": "value"})
+        Person.objects.create(team_id=self.team.pk, distinct_ids=["p1"], properties={"key": "value"})
         _create_event(
             team=self.team,
             event="$pageview",
@@ -1037,7 +1037,7 @@ class TestClickhouseTrends(ClickhouseTestMixin, trend_test_factory(ClickhouseTre
             properties={"key": "val"},
         )
 
-        p2 = Person.objects.create(team_id=self.team.pk, distinct_ids=["p2"], properties={"key_2": "value_2"})
+        Person.objects.create(team_id=self.team.pk, distinct_ids=["p2"], properties={"key_2": "value_2"})
         _create_event(
             team=self.team,
             event="$pageview",
@@ -1046,7 +1046,7 @@ class TestClickhouseTrends(ClickhouseTestMixin, trend_test_factory(ClickhouseTre
             properties={"key": "val"},
         )
 
-        p3 = Person.objects.create(team_id=self.team.pk, distinct_ids=["p3"], properties={"key_2": "value_2"})
+        Person.objects.create(team_id=self.team.pk, distinct_ids=["p3"], properties={"key_2": "value_2"})
         _create_event(
             team=self.team,
             event="$pageview",
@@ -1089,7 +1089,7 @@ class TestClickhouseTrends(ClickhouseTestMixin, trend_test_factory(ClickhouseTre
 
     @test_with_materialized_columns(person_properties=["key", "key_2"], verify_no_jsonextract=False)
     def test_breakdown_single_cohort(self):
-        p1 = Person.objects.create(team_id=self.team.pk, distinct_ids=["p1"], properties={"key": "value"})
+        Person.objects.create(team_id=self.team.pk, distinct_ids=["p1"], properties={"key": "value"})
         _create_event(
             team=self.team,
             event="$pageview",
@@ -1098,7 +1098,7 @@ class TestClickhouseTrends(ClickhouseTestMixin, trend_test_factory(ClickhouseTre
             properties={"key": "val"},
         )
 
-        p2 = Person.objects.create(team_id=self.team.pk, distinct_ids=["p2"], properties={"key_2": "value_2"})
+        Person.objects.create(team_id=self.team.pk, distinct_ids=["p2"], properties={"key_2": "value_2"})
         _create_event(
             team=self.team,
             event="$pageview",
@@ -1107,7 +1107,7 @@ class TestClickhouseTrends(ClickhouseTestMixin, trend_test_factory(ClickhouseTre
             properties={"key": "val"},
         )
 
-        p3 = Person.objects.create(team_id=self.team.pk, distinct_ids=["p3"], properties={"key_2": "value_2"})
+        Person.objects.create(team_id=self.team.pk, distinct_ids=["p3"], properties={"key_2": "value_2"})
         _create_event(
             team=self.team,
             event="$pageview",
@@ -1236,7 +1236,7 @@ class TestClickhouseTrends(ClickhouseTestMixin, trend_test_factory(ClickhouseTre
         # test breakdown filtering
         with self.assertRaises(Exception):
             with self.settings(TEST=False, DEBUG=False):
-                response = ClickhouseTrends().run(
+                ClickhouseTrends().run(
                     Filter(data={"events": [{"id": "sign up", "name": "sign up", "type": "events", "order": 0,},],}),
                     self.team,
                 )

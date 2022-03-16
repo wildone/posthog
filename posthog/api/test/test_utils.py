@@ -111,7 +111,7 @@ class TestUtils(BaseTest):
         )
 
     def test_get_target_entity(self):
-        request = lambda url: cast(Any, RequestFactory().get(url))
+        lambda url: cast(Any, RequestFactory().get(url))
         filter = Filter(
             data={"entity_id": "$pageview", "entity_type": "events", "events": [{"id": "$pageview", "type": "events"}],}
         )

@@ -359,7 +359,7 @@ class TestCapture(BaseTest):
     @patch("ee.kafka_client.client._KafkaProducer.produce")
     def test_batch(self, kafka_produce):
         data = {"type": "capture", "event": "user signed up", "distinct_id": "2"}
-        response = self.client.post(
+        self.client.post(
             "/batch/", data={"api_key": self.team.api_token, "batch": [data]}, content_type="application/json",
         )
         arguments = self._to_arguments(kafka_produce)
@@ -403,7 +403,7 @@ class TestCapture(BaseTest):
             "batch": [{"type": "capture", "event": "user signed up", "distinct_id": "2",}],
         }
 
-        response = self.client.generic(
+        self.client.generic(
             "POST",
             "/batch/",
             data=gzip.compress(json.dumps(data).encode()),
@@ -432,7 +432,7 @@ class TestCapture(BaseTest):
             "batch": [{"type": "capture", "event": "user signed up", "distinct_id": "2"}],
         }
 
-        response = self.client.generic(
+        self.client.generic(
             "POST",
             "/batch/?compression=gzip",
             data=gzip.compress(json.dumps(data).encode()),
@@ -460,7 +460,7 @@ class TestCapture(BaseTest):
             "batch": [{"type": "capture", "event": "user signed up", "distinct_id": "2"}],
         }
 
-        response = self.client.generic(
+        self.client.generic(
             "POST",
             "/batch",
             data=lzstring.LZString().compressToBase64(json.dumps(data)).encode(),
@@ -552,7 +552,7 @@ class TestCapture(BaseTest):
 
     @patch("ee.kafka_client.client._KafkaProducer.produce")
     def test_engage(self, kafka_produce):
-        response = self.client.get(
+        self.client.get(
             "/engage/?data=%s"
             % quote(
                 self._to_json(
