@@ -75,12 +75,12 @@ def funnel_test_factory(Funnel, event_factory, person_factory):
 
             with freeze_time("2012-01-01T03:21:34.000Z"):
                 # event
-                person1_stopped_after_signup = person_factory(
+                person_factory(
                     distinct_ids=["stopped_after_signup1"], team_id=self.team.pk
                 )
                 self._signup_event(distinct_id="stopped_after_signup1")
 
-                person2_stopped_after_signup = person_factory(
+                person_factory(
                     distinct_ids=["stopped_after_signup2"], team_id=self.team.pk
                 )
                 self._signup_event(distinct_id="stopped_after_signup2")
@@ -92,10 +92,10 @@ def funnel_test_factory(Funnel, event_factory, person_factory):
             funnel = self._single_step_funnel()
 
             # event
-            person1_stopped_after_signup = person_factory(distinct_ids=["stopped_after_signup1"], team_id=self.team.pk)
+            person_factory(distinct_ids=["stopped_after_signup1"], team_id=self.team.pk)
             self._signup_event(distinct_id="stopped_after_signup1")
 
-            person2_stopped_after_signup = person_factory(distinct_ids=["stopped_after_signup2"], team_id=self.team.pk)
+            person_factory(distinct_ids=["stopped_after_signup2"], team_id=self.team.pk)
             self._signup_event(distinct_id="stopped_after_signup2")
 
             result = funnel.run()
@@ -106,24 +106,24 @@ def funnel_test_factory(Funnel, event_factory, person_factory):
             funnel = self._basic_funnel()
 
             # events
-            person_stopped_after_signup = person_factory(distinct_ids=["stopped_after_signup"], team_id=self.team.pk)
+            person_factory(distinct_ids=["stopped_after_signup"], team_id=self.team.pk)
             self._signup_event(distinct_id="stopped_after_signup")
 
-            person_stopped_after_pay = person_factory(distinct_ids=["stopped_after_pay"], team_id=self.team.pk)
+            person_factory(distinct_ids=["stopped_after_pay"], team_id=self.team.pk)
             self._signup_event(distinct_id="stopped_after_pay")
             self._pay_event(distinct_id="stopped_after_pay")
 
-            person_stopped_after_movie = person_factory(
+            person_factory(
                 distinct_ids=["had_anonymous_id", "completed_movie"], team_id=self.team.pk
             )
             self._signup_event(distinct_id="had_anonymous_id")
             self._pay_event(distinct_id="completed_movie")
             self._movie_event(distinct_id="completed_movie")
 
-            person_that_just_did_movie = person_factory(distinct_ids=["just_did_movie"], team_id=self.team.pk)
+            person_factory(distinct_ids=["just_did_movie"], team_id=self.team.pk)
             self._movie_event(distinct_id="just_did_movie")
 
-            person_wrong_order = person_factory(distinct_ids=["wrong_order"], team_id=self.team.pk)
+            person_factory(distinct_ids=["wrong_order"], team_id=self.team.pk)
             self._pay_event(distinct_id="wrong_order")
             self._signup_event(distinct_id="wrong_order")
             self._movie_event(distinct_id="wrong_order")
@@ -146,7 +146,7 @@ def funnel_test_factory(Funnel, event_factory, person_factory):
         def test_funnel_skipped_step(self):
             funnel = self._basic_funnel()
 
-            person_wrong_order = person_factory(distinct_ids=["wrong_order"], team_id=self.team.pk)
+            person_factory(distinct_ids=["wrong_order"], team_id=self.team.pk)
             self._signup_event(distinct_id="wrong_order")
             self._movie_event(distinct_id="wrong_order")
 
@@ -159,17 +159,17 @@ def funnel_test_factory(Funnel, event_factory, person_factory):
             funnel = self._basic_funnel(properties={"$browser": "Safari"})
 
             # events
-            with_property = person_factory(distinct_ids=["with_property"], team_id=self.team.pk)
+            person_factory(distinct_ids=["with_property"], team_id=self.team.pk)
             self._signup_event(distinct_id="with_property", properties={"$browser": "Safari"})
             self._pay_event(distinct_id="with_property", properties={"$browser": "Safari"})
 
             # should not add a count
-            without_property = person_factory(distinct_ids=["without_property"], team_id=self.team.pk)
+            person_factory(distinct_ids=["without_property"], team_id=self.team.pk)
             self._signup_event(distinct_id="without_property")
             self._pay_event(distinct_id="without_property")
 
             # will add to first step
-            half_property = person_factory(distinct_ids=["half_property"], team_id=self.team.pk)
+            person_factory(distinct_ids=["half_property"], team_id=self.team.pk)
             self._signup_event(distinct_id="half_property", properties={"$browser": "Safari"})
             self._pay_event(distinct_id="half_property")
 
@@ -216,7 +216,7 @@ def funnel_test_factory(Funnel, event_factory, person_factory):
             funnel = self._basic_funnel(filters=filters)
 
             # events
-            with_property = person_factory(
+            person_factory(
                 distinct_ids=["with_property"], team_id=self.team.pk, properties={"$browser": "Safari"},
             )
             self._signup_event(distinct_id="with_property", properties={"$browser": "Safari"})
@@ -224,12 +224,12 @@ def funnel_test_factory(Funnel, event_factory, person_factory):
             self._movie_event(distinct_id="with_property")
 
             # should not add a count
-            without_property = person_factory(distinct_ids=["without_property"], team_id=self.team.pk)
+            person_factory(distinct_ids=["without_property"], team_id=self.team.pk)
             self._signup_event(distinct_id="without_property")
             self._pay_event(distinct_id="without_property", properties={"$browser": "Safari"})
 
             # will add to first step
-            half_property = person_factory(distinct_ids=["half_property"], team_id=self.team.pk)
+            person_factory(distinct_ids=["half_property"], team_id=self.team.pk)
             self._signup_event(distinct_id="half_property")
             self._pay_event(distinct_id="half_property")
             self._movie_event(distinct_id="half_property")
@@ -266,7 +266,7 @@ def funnel_test_factory(Funnel, event_factory, person_factory):
             funnel = self._basic_funnel(filters=filters)
 
             # events
-            with_property = person_factory(
+            person_factory(
                 distinct_ids=["with_property"], team_id=self.team.pk, properties={"email": "hello@posthog.com"},
             )
             self._signup_event(distinct_id="with_property")
