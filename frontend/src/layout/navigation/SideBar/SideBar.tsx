@@ -200,7 +200,7 @@ function Pages(): JSX.Element {
                     )}
                     {featureFlags[FEATURE_FLAGS.WEB_PERFORMANCE] && (
                         <PageButton
-                            icon={<CoffeeOutlined />}
+                            icon={<CoffeeOutlined />} /* TODO: Replace Ant Design with Material or homemade icon */
                             identifier={Scene.WebPerformance}
                             to={urls.webPerformance()}
                         />
