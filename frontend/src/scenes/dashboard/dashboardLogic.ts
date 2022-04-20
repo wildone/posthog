@@ -202,7 +202,7 @@ export const dashboardLogic = kea<dashboardLogicType<DashboardLogicProps>>({
                     }
                     return {
                         ...state,
-                        items: state?.items.map((i) =>
+                        items: state?.items?.map((i) =>
                             i.short_id === shortId
                                 ? {
                                       ...i,

@@ -22,7 +22,7 @@
     transition-property: transform;
 }
 .react-grid-item.resizing {
-    z-index: 1;
+    z-index: 103;
     will-change: width, height;
 }
 
@@ -47,7 +47,7 @@
     border: 1px solid var(--primary);
     outline: 1px solid var(--primary);
     border-radius: var(--radius);
-    z-index: 2;
+    z-index: 104;
     user-select: none;
 }
 .react-resizable-hide > .react-resizable-handle {
@@ -77,24 +77,5 @@
         right: 2rem;
         width: auto;
         cursor: ns-resize;
-    }
-}
-
-// All dropdowns must be below top navigation
-.ant-dropdown {
-    z-index: 700;
-}
-
-.dive-btn {
-    margin-right: 0.5rem;
-
-    &.dive-btn-dive {
-        border-color: $primary;
-        color: $primary;
-
-        &:hover {
-            border-color: darken($primary, 30%);
-            color: darken($primary, 30%);
-        }
     }
 }
