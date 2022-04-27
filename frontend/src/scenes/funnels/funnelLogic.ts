@@ -50,6 +50,7 @@ import {
     isValidBreakdownParameter,
     getBreakdownStepValues,
     getIncompleteConversionWindowStartDate,
+    generateBaselineConversionUrl,
 } from './funnelUtils'
 import { personsModalLogic } from 'scenes/trends/personsModalLogic'
 import { dashboardsModel } from '~/models/dashboardsModel'
@@ -769,7 +770,6 @@ export const funnelLogic = kea<funnelLogicType<openPersonsModelProps>>({
                         step.nested_breakdown.forEach((breakdownStep, i) => {
                             flattenedSteps.push({
                                 ...breakdownStep,
-                                order: step.order,
                                 breakdownIndex: i,
                                 rowKey: getVisibilityIndex(step, breakdownStep.breakdown_value),
                                 isBreakdownParent: false,
@@ -801,9 +801,14 @@ export const funnelLogic = kea<funnelLogicType<openPersonsModelProps>>({
                             ...getBreakdownStepValues(baseStep, 0, true),
                             isBaseline: true,
                             breakdownIndex: 0,
-                            steps: steps.map((s) =>
-                                Object.assign({}, s, { nested_breakdown: undefined, breakdown_value: 'Baseline' })
-                            ),
+                            steps: steps.map((s) => {
+                                return Object.assign({}, s, {
+                                    nested_breakdown: undefined,
+                                    breakdown_value: 'Baseline',
+                                    converted_people_url: generateBaselineConversionUrl(s.converted_people_url),
+                                    dropped_people_url: generateBaselineConversionUrl(s.dropped_people_url),
+                                })
+                            }),
                             conversionRates: {
                                 total: (lastStep?.count ?? 0) / (baseStep?.count ?? 1),
                             },
